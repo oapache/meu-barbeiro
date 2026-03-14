@@ -3,171 +3,209 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
-import { MapPin, Phone, Clock, Star, Calendar, Check } from 'lucide-react'
+import { MapPin, Phone, Clock, Star, Calendar, Check, ArrowLeft } from 'lucide-react'
 
-type TabKey = 'services' | 'info'
+type TabKey = 'services' | 'professionals' | 'reviews'
 
-// Dados mockados
 const mockShop = {
   id: '1',
   name: 'Barbearia do João',
   rating: 4.8,
   reviewsCount: 48,
+  bannerImage: 'https://images.unsplash.com/photo-1622287162716-f311baa1a2b8?auto=format&fit=crop&w=1600&q=80',
+  logoImage: '/logo.jpg',
+  tagline: 'Corte moderno e barba profissional.',
   description: 'Especialistas em corte masculino, barba e acabamento. Ambiente confortável, atendimento personalizado e foco total na sua experiência.',
   address: 'Rua das Barbas, 123 - São Paulo, SP',
+  district: 'Centro',
+  city: 'São Paulo',
   phone: '(11) 99999-9999',
   whatsapp: '5511999999999',
-  horarios: 'Segunda a Sexta: 09:00 - 20:00\nSábado: 09:00 - 18:00',
+  openingHours: [
+    'Segunda a Sexta: 09:00 - 20:00',
+    'Sábado: 09:00 - 18:00',
+    'Domingo: Fechado',
+  ],
   amenities: ['Wi-Fi', 'Ar-condicionado', 'Acessibilidade', 'Pagamento por cartão'],
   services: [
-    { id: '1', name: 'Corte Masculino', price: 55, duration: 40 },
-    { id: '2', name: 'Barba Completa', price: 45, duration: 30 },
-    { id: '3', name: 'Corte + Barba', price: 95, duration: 70 },
-    { id: '4', name: 'Pezinho', price: 30, duration: 20 },
-  ]
+    { id: 's1', name: 'Corte Masculino', price: 55, durationMinutes: 40 },
+    { id: 's2', name: 'Barba Completa', price: 45, durationMinutes: 30 },
+    { id: 's3', name: 'Corte + Barba', price: 95, durationMinutes: 70 },
+    { id: 's4', name: 'Pezinho e Acabamento', price: 30, durationMinutes: 20 },
+  ],
+  professionals: [
+    { id: 'p1', name: 'João Silva', role: 'Barbeiro Senior', experience: '8 anos de experiência' },
+    { id: 'p2', name: 'Pedro Santos', role: 'Especialista em Fade', experience: '6 anos de experiência' },
+  ],
+  reviews: [
+    { id: 'r1', author: 'Thiago A.', rating: 5, comment: 'Atendimento impecável e corte exatamente como pedi.', date: '12/03/2026' },
+    { id: 'r2', author: 'Marcos V.', rating: 5, comment: 'Ambiente top, pontualidade e profissionais muito bons.', date: '08/03/2026' },
+  ],
 }
 
-export default function BarberiaDetailPage({ params }) {
+function formatPrice(value: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+}
+
+function ratingStars(rating: number) {
+  const full = Math.round(rating)
+  return '★'.repeat(full) + '☆'.repeat(5 - full)
+}
+
+export default function BarberShopDetailPage({ params }: { params: { id: string } }) {
   const { isAuthenticated } = useAuth()
   const [activeTab, setActiveTab] = useState<TabKey>('services')
 
   const whatsappLink = useMemo(() => {
-    const message = encodeURIComponent(`Olá! Gostaria de agendar um horário na ${mockShop.name}.`)
+    const message = encodeURIComponent(`Olá! Quero agendar um horário na ${mockShop.name}.`)
     return `https://wa.me/${mockShop.whatsapp}?text=${message}`
   }, [])
-
-  const formatPrice = (value) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
-  }
 
   return (
     <main className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex justify-between items-center">
-          <Link href="/buscar" className="text-zinc-300 hover:text-white">
-            ← Voltar
+        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+          <Link href="/buscar" className="flex items-center gap-2 text-zinc-300 hover:text-white">
+            <ArrowLeft className="w-5 h-5" />
+            <span>Voltar</span>
           </Link>
-          <h1 className="font-bold">{mockShop.name}</h1>
-          <button className="text-zinc-300">
+          <span className="font-bold truncate">{mockShop.name}</span>
+          <button className="text-zinc-300 hover:text-white">
             <Star className="w-5 h-5" />
           </button>
         </div>
       </header>
 
-      {/* Info */}
-      <section className="pt-16 px-4 pb-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-xl bg-zinc-800 flex items-center justify-center">
-              <span className="text-2xl">✂️</span>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold">{mockShop.name}</h2>
-              <div className="flex items-center gap-1 text-sm">
-                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                <span>{mockShop.rating}</span>
-                <span className="text-zinc-400">({mockShop.reviewsCount} avaliações)</span>
+      {/* Banner */}
+      <section className="relative border-b border-white/10">
+        <div className="h-64 w-full bg-cover bg-center md:h-80" style={{ backgroundImage: `url(${mockShop.bannerImage})` }}>
+          <div className="h-full w-full bg-gradient-to-t from-black via-black/60 to-black/20" />
+        </div>
+
+        <div className="mx-auto -mt-16 max-w-7xl px-4 pb-6 md:px-6">
+          <div className="rounded-2xl border border-white/10 bg-zinc-950/95 p-5 backdrop-blur-sm md:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-4">
+                <img src={mockShop.logoImage} alt={mockShop.name} className="h-16 w-16 rounded-xl border border-white/20 object-cover sm:h-20 sm:w-20" />
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Barbearia</p>
+                  <h1 className="text-2xl font-semibold text-white md:text-3xl">{mockShop.name}</h1>
+                  <p className="mt-1 text-sm text-zinc-300">{mockShop.tagline}</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm">
+                <p className="font-medium text-white">{mockShop.rating.toFixed(1)} <span className="text-zinc-400">/ 5.0</span></p>
+                <p className="text-amber-400">{ratingStars(mockShop.rating)}</p>
+                <p className="text-zinc-400">{mockShop.reviewsCount} avaliações</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Tabs */}
-      <div className="border-b border-white/10">
-        <div className="max-w-2xl mx-auto flex">
-          <button
-            onClick={() => setActiveTab('services')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 ${
-              activeTab === 'services' ? 'border-white text-white' : 'border-transparent text-zinc-500'
-            }`}
-          >
-            Serviços
-          </button>
-          <button
-            onClick={() => setActiveTab('info')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 ${
-              activeTab === 'info' ? 'border-white text-white' : 'border-transparent text-zinc-500'
-            }`}
-          >
-            Informações
-          </button>
-        </div>
-      </div>
+      <div className="mx-auto max-w-7xl px-4 pb-24 pt-6 md:px-6 lg:grid lg:grid-cols-[2fr_1fr] lg:gap-8 lg:pb-12">
+        {/* Main Content */}
+        <section className="space-y-6">
+          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
+            <h2 className="text-lg font-semibold">Sobre a barbearia</h2>
+            <p className="mt-3 leading-relaxed text-zinc-300">{mockShop.description}</p>
+          </article>
 
-      {/* Content */}
-      <div className="max-w-2xl mx-auto px-4 py-6 pb-32">
-        {activeTab === 'services' && (
-          <div className="space-y-3">
-            {mockShop.services.map((service) => (
-              <div key={service.id} className="bg-zinc-900 rounded-xl p-4 flex justify-between items-center">
-                <div>
-                  <p className="font-medium">{service.name}</p>
-                  <p className="text-sm text-zinc-400">{service.duration} min</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold">{formatPrice(service.price)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
+            <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3">
+              {(['services', 'professionals', 'reviews'] as TabKey[]).map((tab) => (
+                <button key={tab} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${activeTab === tab ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'}`}>
+                  {tab === 'services' ? 'Serviços' : tab === 'professionals' ? 'Profissionais' : 'Avaliações'}
+                </button>
+              ))}
+            </div>
 
-        {activeTab === 'info' && (
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-medium mb-2">Sobre</h3>
-              <p className="text-zinc-400 text-sm">{mockShop.description}</p>
-            </div>
-            
-            <div>
-              <h3 className="font-medium mb-2 flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Localização
-              </h3>
-              <p className="text-zinc-400 text-sm">{mockShop.address}</p>
-            </div>
-            
-            <div>
-              <h3 className="font-medium mb-2 flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Horários
-              </h3>
-              <p className="text-zinc-400 text-sm whitespace-pre-line">{mockShop.horarios}</p>
-            </div>
-            
-            <div>
-              <h3 className="font-medium mb-2">Comodidades</h3>
-              <div className="flex flex-wrap gap-2">
-                {mockShop.amenities.map((amenity) => (
-                  <span key={amenity} className="px-3 py-1 bg-zinc-800 rounded-full text-sm flex items-center gap-1">
-                    <Check className="w-3 h-3 text-green-500" />
-                    {amenity}
-                  </span>
+            {activeTab === 'services' && (
+              <div className="space-y-3">
+                {mockShop.services.map((service) => (
+                  <div key={service.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/50 p-4">
+                    <div>
+                      <p className="font-medium text-white">{service.name}</p>
+                      <p className="text-sm text-zinc-400">{service.durationMinutes} minutos</p>
+                    </div>
+                    <p className="text-lg font-semibold text-white">{formatPrice(service.price)}</p>
+                  </div>
                 ))}
               </div>
-            </div>
-          </div>
-        )}
+            )}
+
+            {activeTab === 'professionals' && (
+              <div className="space-y-3">
+                {mockShop.professionals.map((professional) => (
+                  <div key={professional.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
+                    <p className="font-medium text-white">{professional.name}</p>
+                    <p className="text-sm text-zinc-300">{professional.role}</p>
+                    <p className="text-xs text-zinc-500">{professional.experience}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'reviews' && (
+              <div className="space-y-3">
+                {mockShop.reviews.map((review) => (
+                  <div key={review.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-medium text-white">{review.author}</p>
+                      <p className="text-xs text-zinc-500">{review.date}</p>
+                    </div>
+                    <p className="mt-1 text-sm text-amber-400">{ratingStars(review.rating)}</p>
+                    <p className="mt-2 text-sm text-zinc-300">{review.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        </section>
+
+        {/* Sidebar */}
+        <aside className="mt-6 space-y-6 lg:mt-0">
+          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
+            <h3 className="text-lg font-semibold">Agendamento</h3>
+            <p className="mt-2 text-sm text-zinc-300">Reserve seu horário com confirmação rápida no WhatsApp.</p>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
+              Agendar via WhatsApp
+            </a>
+            <Link href="/buscar" className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-white/20 px-4 py-3 text-sm font-medium text-white hover:bg-zinc-900">
+              Voltar para busca
+            </Link>
+          </article>
+
+          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
+            <h3 className="text-lg font-semibold">Comodidades</h3>
+            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+              {mockShop.amenities.map((amenity) => (
+                <li key={amenity} className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />{amenity}
+                </li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
+            <h3 className="text-lg font-semibold">Localização</h3>
+            <p className="mt-3 text-sm text-zinc-300">{mockShop.address}</p>
+            <p className="mt-1 text-xs text-zinc-500">{mockShop.district} - {mockShop.city}</p>
+            <h4 className="mt-5 text-sm font-semibold text-white">Contato</h4>
+            <p className="mt-2 text-sm text-zinc-300">{mockShop.phone}</p>
+            <h4 className="mt-5 text-sm font-semibold text-white">Horários</h4>
+            <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+              {mockShop.openingHours.map((hour) => (<li key={hour}>{hour}</li>))}
+            </ul>
+          </article>
+        </aside>
       </div>
 
-      {/* Botão Flutuante */}
-      <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 p-4">
-        <div className="max-w-2xl mx-auto flex gap-3">
-          <a 
-            href={whatsappLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 bg-green-500 text-white py-3 rounded-full font-medium text-center flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-            </svg>
-            Agendar
-          </a>
-        </div>
-      </div>
+      {/* Floating Button Mobile */}
+      <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="fixed bottom-5 left-4 right-4 inline-flex items-center justify-center rounded-xl bg-white px-5 py-4 text-sm font-semibold text-black shadow-lg transition hover:bg-zinc-200 lg:hidden">
+        Agendar agora via WhatsApp
+      </a>
     </main>
   )
 }
