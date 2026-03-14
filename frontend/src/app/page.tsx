@@ -4,20 +4,20 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white">
       {/* Header */}
-      <header className="fixed top-0 w-full bg-white/90 backdrop-blur-md border-b z-50">
+      <header className="fixed top-0 w-full bg-black border-b border-white/10 z-50">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover" />
-            <span className="text-lg font-bold text-black">Meu Barbeiro</span>
+            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+            <span className="text-lg font-bold text-white">Meu Barbeiro</span>
           </div>
           <nav className="flex gap-4">
-            <Link href="/" className="text-sm font-medium text-black">
+            <Link href="/" className="text-sm font-medium text-white hover:text-gray-300">
               Início
             </Link>
-            <Link href="/buscar" className="text-sm font-medium text-gray-600 hover:text-black">
+            <Link href="/buscar" className="text-sm font-medium text-gray-400 hover:text-white">
               Buscar
             </Link>
-            <Link href="/login" className="text-sm font-medium text-gray-600 hover:text-black">
+            <Link href="/login" className="text-sm font-medium text-gray-400 hover:text-white">
               Entrar
             </Link>
           </nav>
