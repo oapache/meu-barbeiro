@@ -17,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 const whatsappRoutes = require('./routes/whatsapp');
+const barbeariasRoutes = require('./routes/barbearias');
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -28,6 +29,7 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/barbearias', barbeariasRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -36,8 +38,9 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(config.port, () => {
-  console.log(`🚀 Server running on port ${config.port}`);
+const PORT = config.port || 3001;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
 
 module.exports = app;
