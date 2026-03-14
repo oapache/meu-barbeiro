@@ -1,88 +1,143 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
+// Helper para obter token
+const getToken = () => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('token');
+  }
+  return null;
+};
+
+// Helper para fazer fetch com auth
+const fetchWithAuth = async (endpoint, options = {}) => {
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  // Tratamento de erros
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Erro na requisição' }));
+    throw new Error(error.error || 'Erro na requisição');
+  }
+
+  return res.json();
+};
+
 class ApiService {
-  // Usuários
+  // ============ AUTH ============
   static async register(data) {
-    const res = await fetch(`${API_URL}/usuarios/register`, {
+    return fetchWithAuth('/usuarios/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
-    return res.json();
   }
 
   static async login(email, senha) {
-    const res = await fetch(`${API_URL}/usuarios/login`, {
+    return fetchWithAuth('/usuarios/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, senha })
+      body: JSON.stringify({ email, senha }),
     });
-    return res.json();
   }
 
-  // Barbearias
+  static async getMe() {
+    return fetchWithAuth('/usuarios/me');
+  }
+
+  // ============ BARBEARIAS ============
   static async listBarbearias() {
-    const res = await fetch(`${API_URL}/barbearias`);
-    return res.json();
+    return fetchWithAuth('/barbearias');
+  }
+
+  static async getBarbearia(id) {
+    return fetchWithAuth(`/barbearias/${id}`);
   }
 
   static async createBarbearia(data) {
-    const res = await fetch(`${API_URL}/barbearias`, {
+    return fetchWithAuth('/barbearias', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
-    return res.json();
   }
 
-  // Serviços
+  static async updateBarbearia(id, data) {
+    return fetchWithAuth(`/barbearias/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ============ SERVIÇOS ============
   static async listServicos(barbeariaId) {
-    const res = await fetch(`${API_URL}/barbearias/${barbeariaId}/servicos`);
-    return res.json();
+    return fetchWithAuth(`/barbearias/${barbeariaId}/servicos`);
   }
 
   static async createServico(barbeariaId, data) {
-    const res = await fetch(`${API_URL}/barbearias/${barbeariaId}/servicos`, {
+    return fetchWithAuth(`/barbearias/${barbeariaId}/servicos`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
-    return res.json();
   }
 
-  // Agendamentos
+  static async updateServico(id, data) {
+    return fetchWithAuth(`/servicos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deleteServico(id) {
+    return fetchWithAuth(`/servicos/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ============ AGENDAMENTOS ============
   static async listAgendamentos(filters = {}) {
     const params = new URLSearchParams(filters).toString();
-    const res = await fetch(`${API_URL}/agendamentos?${params}`);
-    return res.json();
+    return fetchWithAuth(`/agendamentos?${params}`);
+  }
+
+  static async getAgendamento(id) {
+    return fetchWithAuth(`/agendamentos/${id}`);
   }
 
   static async createAgendamento(data) {
-    const res = await fetch(`${API_URL}/agendamentos`, {
+    return fetchWithAuth('/agendamentos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
-    return res.json();
   }
 
   static async updateAgendamento(id, data) {
-    const res = await fetch(`${API_URL}/agendamentos/${id}`, {
+    return fetchWithAuth(`/agendamentos/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
-    return res.json();
   }
 
-  // WhatsApp
-  static async gerarLinkWhatsApp(telefone, tipo, dados) {
-    const res = await fetch(`${API_URL}/whatsapp/gerar-link`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ telefone, tipo, dados })
+  static async cancelAgendamento(id) {
+    return fetchWithAuth(`/agendamentos/${id}`, {
+      method: 'DELETE',
     });
-    return res.json();
+  }
+
+  // ============ WHATSAPP ============
+  static async gerarLinkWhatsApp(telefone, tipo, dados) {
+    return fetchWithAuth('/whatsapp/gerar-link', {
+      method: 'POST',
+      body: JSON.stringify({ telefone, tipo, dados }),
+    });
   }
 }
 
