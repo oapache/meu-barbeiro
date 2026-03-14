@@ -108,14 +108,15 @@ export default function CadastroPage() {
 
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-1">
-              WhatsApp
+              WhatsApp (apenas números)
             </label>
             <input
               type="tel"
               value={telefone}
-              onChange={(e) => setTelefone(e.target.value)}
+              onChange={(e) => setTelefone(e.target.value.replace(/\D/g, ''))}
               className="w-full px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-700 text-white focus:border-white focus:outline-none"
-              placeholder="(11) 99999-9999"
+              placeholder="551199999999"
+              maxLength={13}
               required
             />
           </div>
