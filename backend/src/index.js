@@ -17,7 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 const whatsappRoutes = require('./routes/whatsapp');
-const barbeariasRoutes = require('./routes/barberias');
+const barbeariasRoutes = require('./routes/barbearias');
 const usuariosRoutes = require('./routes/usuarios');
 const servicosRoutes = require('./routes/servicos');
 const agendamentosRoutes = require('./routes/agendamentos');

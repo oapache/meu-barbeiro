@@ -28,7 +28,7 @@ export default function CadastroPage() {
       <div className="max-w-sm mx-auto">
         <Link href="/" className="text-center block mb-8">
           <div className="w-16 h-16 mx-auto mb-4 bg-black rounded-full flex items-center justify-center">
-            <span className="text-white text-2xl">✂️</span>
+            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-12 h-12 rounded-full object-cover" />
           </div>
           <h1 className="text-xl font-bold">Criar Conta</h1>
         </Link>
