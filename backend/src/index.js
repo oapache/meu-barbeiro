@@ -17,7 +17,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 const whatsappRoutes = require('./routes/whatsapp');
-const barbeariasRoutes = require('./routes/barbearias');
+const barbeariasRoutes = require('./routes/barberias');
+const usuariosRoutes = require('./routes/usuarios');
+const servicosRoutes = require('./routes/servicos');
+const agendamentosRoutes = require('./routes/agendamentos');
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -30,6 +33,9 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/barbearias', barbeariasRoutes);
+app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/servicos', servicosRoutes);
+app.use('/api/agendamentos', agendamentosRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
