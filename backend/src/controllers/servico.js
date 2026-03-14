@@ -1,16 +1,22 @@
 const pool = require('../config/database');
 
-/**
- * GET /api/barbearias/:barbeariaId/servicos
- * Lista serviços de uma barbearia
- */
+// Listar serviços de uma barbearia
 async function listServicos(req, res) {
   try {
     const { barbeariaId } = req.params;
-    const result = await pool.query(
-      'SELECT * FROM servicos WHERE barbearia_id = $1 AND ativo = true ORDER BY nome',
-      [barbeariaId]
-    );
+    const { ativo } = req.query;
+    
+    let query = 'SELECT * FROM servicos WHERE barbearia_id = $1';
+    const params = [barbeariaId];
+    
+    if (ativo !== undefined) {
+      query += ' AND ativo = $2';
+      params.push(ativo === 'true');
+    }
+    
+    query += ' ORDER BY nome';
+    
+    const result = await pool.query(query, params);
     res.json({ servicos: result.rows });
   } catch (error) {
     console.error('Erro:', error);
@@ -18,10 +24,7 @@ async function listServicos(req, res) {
   }
 }
 
-/**
- * POST /api/barbearias/:barbeariaId/servicos
- * Cria novo serviço
- */
+// Criar serviço
 async function createServico(req, res) {
   try {
     const { barbeariaId } = req.params;
@@ -44,10 +47,7 @@ async function createServico(req, res) {
   }
 }
 
-/**
- * PUT /api/servicos/:id
- * Atualiza serviço
- */
+// Atualizar serviço
 async function updateServico(req, res) {
   try {
     const { id } = req.params;
@@ -70,10 +70,7 @@ async function updateServico(req, res) {
   }
 }
 
-/**
- * DELETE /api/servicos/:id
- * Remove (desativa) serviço
- */
+// Deletar (desativar) serviço
 async function deleteServico(req, res) {
   try {
     const { id } = req.params;
