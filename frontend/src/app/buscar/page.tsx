@@ -2,16 +2,21 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import ApiService from '@/services/api'
 import { Search, MapPin, Star } from 'lucide-react'
+
+type BarbeariaResumo = {
+  id: string
+  nome: string
+  endereco: string
+  distancia: string
+  nota: number
+}
 
 export default function BuscarPage() {
   const [busca, setBusca] = useState('')
-  const [barbearias, setBarbearias] = useState([])
-  const [loading, setLoading] = useState(false)
 
   // Dados mockados (depois conectar com API)
-  const mockBarbearias = [
+  const mockBarbearias: BarbeariaResumo[] = [
     { id: '1', nome: 'Barbearia do João', endereco: 'São Paulo, SP', distancia: '2km', nota: 4.8 },
     { id: '2', nome: 'Barbearia Moderno', endereco: 'São Paulo, SP', distancia: '3km', nota: 4.5 },
     { id: '3', nome: 'Corte & Estilo', endereco: 'São Paulo, SP', distancia: '5km', nota: 4.9 },

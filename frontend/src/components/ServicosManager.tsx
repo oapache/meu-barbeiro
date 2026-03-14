@@ -1,14 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/context/AuthContext'
 import { Plus, Pencil, Trash2, X, Check } from 'lucide-react'
 
+type Servico = {
+  id: number
+  nome: string
+  descricao?: string
+  preco: number | string
+  duracao_minutos: number | string
+  ativo: boolean
+}
+
 export default function ServicosManager() {
-  const { user, isAuthenticated } = useAuth()
-  const [servicos, setServicos] = useState([])
+  const [servicos, setServicos] = useState<Servico[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [editando, setEditando] = useState(null)
+  const [editando, setEditando] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   
   const [form, setForm] = useState({
@@ -49,7 +56,7 @@ export default function ServicosManager() {
     }
   }
 
-  const handleEdit = (servico) => {
+  const handleEdit = (servico: Servico) => {
     setForm({
       nome: servico.nome,
       descricao: servico.descricao || '',
@@ -60,13 +67,13 @@ export default function ServicosManager() {
     setShowForm(true)
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = (id: number) => {
     if (confirm('Tem certeza que deseja remover este serviço?')) {
       setServicos(servicos.filter(s => s.id !== id))
     }
   }
 
-  const handleToggleAtivo = (id) => {
+  const handleToggleAtivo = (id: number) => {
     setServicos(servicos.map(s => s.id === id ? { ...s, ativo: !s.ativo } : s))
   }
 

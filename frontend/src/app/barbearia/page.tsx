@@ -6,11 +6,39 @@ import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
 import { Calendar, Users, Scissors, Plus, CheckCircle, XCircle, Clock } from 'lucide-react'
 
+type StatusAgenda = 'confirmado' | 'pendente' | 'cancelado'
+
+type Agendamento = {
+  id: number
+  cliente_nome: string
+  servico: string
+  hora: string
+  status: StatusAgenda
+  data: string
+}
+
+type Servico = {
+  id: number
+  nome: string
+  preco: number
+  duracao: number
+}
+
+type AuthUser = {
+  nome?: string
+}
+
+type AuthState = {
+  user?: AuthUser
+  logout: () => void
+  isAuthenticated: boolean
+}
+
 export default function BarbeariaDashboard() {
-  const { user, logout, isAuthenticated } = useAuth()
+  const { user, logout, isAuthenticated } = useAuth() as AuthState
   const [activeTab, setActiveTab] = useState('agenda')
-  const [agendamentos, setAgendamentos] = useState([])
-  const [servicos, setServicos] = useState([])
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
+  const [servicos, setServicos] = useState<Servico[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -40,7 +68,7 @@ export default function BarbeariaDashboard() {
     window.location.href = '/'
   }
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: StatusAgenda) => {
     switch (status) {
       case 'confirmado': return 'bg-green-500'
       case 'pendente': return 'bg-yellow-500'
@@ -49,7 +77,7 @@ export default function BarbeariaDashboard() {
     }
   }
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: StatusAgenda) => {
     switch (status) {
       case 'confirmado': return <CheckCircle className="w-4 h-4" />
       case 'pendente': return <Clock className="w-4 h-4" />

@@ -7,11 +7,32 @@ import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
 import { Calendar, Clock, Check, X, User, MapPin, Phone, Mail } from 'lucide-react'
 
-export default function AgendamentoPage({ params }) {
+type Servico = {
+  id: string
+  nome: string
+  preco: number
+  duracao: number
+}
+
+type DataOption = {
+  data: string
+  dia: number
+  semana: string
+}
+
+type AuthUser = {
+  nome?: string
+}
+
+type AuthState = {
+  user?: AuthUser
+}
+
+export default function AgendamentoPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user } = useAuth() as AuthState
   const [step, setStep] = useState(1)
-  const [servicoSelecionado, setServicoSelecionado] = useState(null)
+  const [servicoSelecionado, setServicoSelecionado] = useState<Servico | null>(null)
   const [dataSelecionada, setDataSelecionada] = useState('')
   const [horaSelecionada, setHoraSelecionada] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,7 +55,7 @@ export default function AgendamentoPage({ params }) {
 
   // Gerar datas dos próximos 14 dias
   const datas = useMemo(() => {
-    const dias = []
+    const dias: DataOption[] = []
     for (let i = 1; i <= 14; i++) {
       const date = new Date()
       date.setDate(date.getDate() + i)
