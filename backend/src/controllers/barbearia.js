@@ -1,9 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
-
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY || 'placeholder'
-);
+const pool = require('../config/database');
 
 /**
  * GET /api/barbearias
@@ -11,14 +6,8 @@ const supabase = createClient(
  */
 async function listBarbearias(req, res) {
   try {
-    const { data, error } = await supabase
-      .from('barbearias')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    
-    res.json({ barbearias: data });
+    const result = await pool.query('SELECT * FROM barbearias ORDER BY created_at DESC');
+    res.json({ barbearias: result.rows });
   } catch (error) {
     console.error('Erro:', error);
     res.status(500).json({ error: 'Erro ao listar barbearias' });
@@ -37,23 +26,13 @@ async function createBarbearia(req, res) {
       return res.status(400).json({ error: 'Nome e usuário são obrigatórios' });
     }
     
-    const { data, error } = await supabase
-      .from('barbearias')
-      .insert([{
-        nome,
-        telefone: telefone || '',
-        endereco: endereco || '',
-        horario_abertura: horario_abertura || '09:00',
-        horario_fechamento: horario_fechamento || '20:00',
-        usuario_id,
-        created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
+    const result = await pool.query(
+      `INSERT INTO barbearias (nome, telefone, endereco, horario_abertura, horario_fechamento, usuario_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [nome, telefone || '', endereco || '', horario_abertura || '09:00', horario_fechamento || '20:00', usuario_id]
+    );
     
-    if (error) throw error;
-    
-    res.status(201).json({ barbearia: data });
+    res.status(201).json({ barbearia: result.rows[0] });
   } catch (error) {
     console.error('Erro:', error);
     res.status(500).json({ error: 'Erro ao criar barbearia' });
@@ -67,17 +46,13 @@ async function createBarbearia(req, res) {
 async function getBarbearia(req, res) {
   try {
     const { id } = req.params;
+    const result = await pool.query('SELECT * FROM barbearias WHERE id = $1', [id]);
     
-    const { data, error } = await supabase
-      .from('barbearias')
-      .select('*')
-      .eq('id', id)
-      .single();
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Barbearia não encontrada' });
+    }
     
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Barbearia não encontrada' });
-    
-    res.json({ barbearia: data });
+    res.json({ barbearia: result.rows[0] });
   } catch (error) {
     console.error('Erro:', error);
     res.status(500).json({ error: 'Erro ao buscar barbearia' });
@@ -93,24 +68,17 @@ async function updateBarbearia(req, res) {
     const { id } = req.params;
     const { nome, telefone, endereco, horario_abertura, horario_fechamento, whatsapp_link } = req.body;
     
-    const { data, error } = await supabase
-      .from('barbearias')
-      .update({
-        nome,
-        telefone,
-        endereco,
-        horario_abertura,
-        horario_fechamento,
-        whatsapp_link,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const result = await pool.query(
+      `UPDATE barbearias SET nome=$1, telefone=$2, endereco=$3, horario_abertura=$4, 
+       horario_fechamento=$5, whatsapp_link=$6, updated_at=NOW() WHERE id=$7 RETURNING *`,
+      [nome, telefone, endereco, horario_abertura, horario_fechamento, whatsapp_link, id]
+    );
     
-    if (error) throw error;
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Barbearia não encontrada' });
+    }
     
-    res.json({ barbearia: data });
+    res.json({ barbearia: result.rows[0] });
   } catch (error) {
     console.error('Erro:', error);
     res.status(500).json({ error: 'Erro ao atualizar barbearia' });
@@ -124,13 +92,11 @@ async function updateBarbearia(req, res) {
 async function deleteBarbearia(req, res) {
   try {
     const { id } = req.params;
+    const result = await pool.query('DELETE FROM barbearias WHERE id = $1 RETURNING *', [id]);
     
-    const { error } = await supabase
-      .from('barbearias')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw error;
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Barbearia não encontrada' });
+    }
     
     res.json({ message: 'Barbearia removida com sucesso' });
   } catch (error) {
