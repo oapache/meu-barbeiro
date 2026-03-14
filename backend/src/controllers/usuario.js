@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 async function register(req, res) {
   try {
     const { nome, email, senha, telefone, tipo } = req.body;
+    console.debug('[USUARIO.REGISTER] Entrada', { email, tipo, hasNome: !!nome, hasSenha: !!senha });
     
     if (!nome || !email || !senha) {
       return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
@@ -15,6 +16,7 @@ async function register(req, res) {
     
     // Verificar se email já existe
     const existing = await pool.query('SELECT id FROM usuarios WHERE email = $1', [email]);
+    console.debug('[USUARIO.REGISTER] Verificacao email', { email, found: existing.rows.length > 0 });
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
@@ -30,7 +32,19 @@ async function register(req, res) {
     
     res.status(201).json({ usuario: result.rows[0] });
   } catch (error) {
-    console.error('Erro:', error);
+    const isDbUnavailable = error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND';
+    console.error('[USUARIO.REGISTER] Erro', {
+      code: error?.code,
+      message: error?.message
+    });
+
+    if (isDbUnavailable) {
+      return res.status(503).json({
+        error: 'Banco indisponivel. Configure DATABASE_URL no backend/.env e tente novamente.'
+      });
+    }
+
+    console.error(error);
     res.status(500).json({ error: 'Erro ao criar usuário' });
   }
 }
@@ -42,12 +56,14 @@ async function register(req, res) {
 async function login(req, res) {
   try {
     const { email, senha } = req.body;
+    console.debug('[USUARIO.LOGIN] Entrada', { email, hasSenha: !!senha });
     
     if (!email || !senha) {
       return res.status(400).json({ error: 'Email e senha são obrigatórios' });
     }
     
     const result = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
+    console.debug('[USUARIO.LOGIN] Usuario encontrado', { email, found: result.rows.length > 0 });
     
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Credenciais inválidas' });
@@ -64,7 +80,19 @@ async function login(req, res) {
     const { senha_hash, ...usuarioSemSenha } = usuario;
     res.json({ usuario: usuarioSemSenha });
   } catch (error) {
-    console.error('Erro:', error);
+    const isDbUnavailable = error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND';
+    console.error('[USUARIO.LOGIN] Erro', {
+      code: error?.code,
+      message: error?.message
+    });
+
+    if (isDbUnavailable) {
+      return res.status(503).json({
+        error: 'Banco indisponivel. Configure DATABASE_URL no backend/.env e tente novamente.'
+      });
+    }
+
+    console.error(error);
     res.status(500).json({ error: 'Erro ao fazer login' });
   }
 }
