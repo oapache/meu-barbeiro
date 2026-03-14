@@ -8,16 +8,17 @@ const sql = neon(process.env.DATABASE_URL);
 const pool = {
   query: async (text, params = []) => {
     try {
-      // Converter $1, $2, etc para placeholders de template literal
+      // Converter $1, $2, etc para placeholders
       let queryText = text;
       if (params.length > 0) {
-        // Substituir $1, $2, etc por placeholders
         params.forEach((param, index) => {
-          queryText = queryText.replace(\`\$\{index + 1}\`, \`\${param}\`);
+          const placeholder = `$${index + 1}`;
+          // Substitui $1, $2, etc por String(param)
+          queryText = queryText.replace(placeholder, `'${String(param).replace(/'/g, "''")}'`);
         });
       }
       
-      const result = await sql\`\${queryText}\`;
+      const result = await sql`${queryText}`;
       return { rows: result };
     } catch (error) {
       console.error('Query error:', error.message);
