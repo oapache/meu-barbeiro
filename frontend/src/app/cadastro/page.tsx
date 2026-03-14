@@ -26,19 +26,24 @@ export default function CadastroPage() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8">
       <div className="max-w-sm mx-auto">
-        <Link href="/" className="text-center block mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 bg-black rounded-full flex items-center justify-center">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-12 h-12 rounded-full object-cover" />
-          </div>
+        {/* Logo Grande */}
+        <div className="text-center mb-6">
+          <Link href="/">
+            <img 
+              src="/logo.jpg" 
+              alt="Meu Barbeiro" 
+              className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-black"
+            />
+          </Link>
           <h1 className="text-xl font-bold">Criar Conta</h1>
-        </Link>
+        </div>
 
         {/* Tipo de conta */}
         <div className="flex gap-2 mb-6">
           <button
             type="button"
             onClick={() => setTipo('cliente')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
               tipo === 'cliente'
                 ? 'bg-black text-white'
                 : 'bg-gray-200 text-gray-700'
@@ -49,7 +54,7 @@ export default function CadastroPage() {
           <button
             type="button"
             onClick={() => setTipo('barbeiro')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
               tipo === 'barbeiro'
                 ? 'bg-black text-white'
                 : 'bg-gray-200 text-gray-700'
@@ -130,6 +135,12 @@ export default function CadastroPage() {
           Já tem conta?{' '}
           <Link href="/login" className="text-black font-medium">
             Entrar
+          </Link>
+        </p>
+        
+        <p className="text-center mt-4">
+          <Link href="/" className="text-sm text-gray-500">
+            ← Voltar ao início
           </Link>
         </p>
       </div>

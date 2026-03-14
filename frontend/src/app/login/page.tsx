@@ -23,12 +23,18 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8">
       <div className="max-w-sm mx-auto">
-        <Link href="/" className="text-center block mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 bg-black rounded-full flex items-center justify-center">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-12 h-12 rounded-full object-cover" />
-          </div>
-          <h1 className="text-xl font-bold">Meu Barbeiro</h1>
-        </Link>
+        {/* Logo Grande */}
+        <div className="text-center mb-8">
+          <Link href="/">
+            <img 
+              src="/logo.jpg" 
+              alt="Meu Barbeiro" 
+              className="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-black"
+            />
+          </Link>
+          <h1 className="text-2xl font-bold">Meu Barbeiro</h1>
+          <p className="text-gray-600">Faça seu login</p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -72,6 +78,12 @@ export default function LoginPage() {
           Não tem conta?{' '}
           <Link href="/cadastro" className="text-black font-medium">
             Criar
+          </Link>
+        </p>
+        
+        <p className="text-center mt-4">
+          <Link href="/" className="text-sm text-gray-500">
+            ← Voltar ao início
           </Link>
         </p>
       </div>
