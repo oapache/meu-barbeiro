@@ -21,9 +21,7 @@ export default function Home() {
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
-              <Scissors className="w-5 h-5 text-black" />
-            </div>
+            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
             <span className="text-lg font-bold text-white">Meu Barbeiro</span>
           </Link>
           <nav className="flex gap-6">
@@ -247,9 +245,7 @@ export default function Home() {
       <footer className="py-12 px-4 border-t border-white/10">
         <div className="max-w-6xl mx-auto text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
-              <Scissors className="w-4 h-4 text-black" />
-            </div>
+            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-8 h-8 rounded-full object-cover border border-white" />
             <span className="font-bold">Meu Barbeiro</span>
           </div>
           <p className="text-zinc-500 text-sm">
