@@ -105,10 +105,29 @@ export default function PerfilPage() {
     <main className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-lg font-bold">Meu Perfil</h1>
-          <button onClick={handleLogout} className="text-zinc-400">
-            <LogOut className="w-5 h-5" />
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2">
+              <img src="/logo.jpg" alt="Meu Barbeiro" className="w-9 h-9 rounded-full object-cover border border-white/20" />
+              <span className="text-base font-bold">Meu Barbeiro</span>
+            </Link>
+          </div>
+
+          <nav className="hidden md:flex items-center gap-6 text-sm">
+            <Link href="/" className="text-zinc-300 hover:text-white transition">
+              Início
+            </Link>
+            <Link href="/buscar" className="text-zinc-300 hover:text-white transition">
+              Buscar
+            </Link>
+            <Link href="/perfil" className="text-white font-medium">
+              Perfil
+            </Link>
+          </nav>
+
+          <button onClick={handleLogout} className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-sm transition">
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Sair</span>
           </button>
         </div>
       </header>
