@@ -5,6 +5,10 @@ import ApiService from '@/services/api'
 
 const AuthContext = createContext(null)
 
+export function getRedirectByUserType(user) {
+  return user?.tipo === 'barbeiro' ? '/barbearia' : '/perfil'
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -27,7 +31,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem('token', response.token || 'dummy-token')
       localStorage.setItem('user', JSON.stringify(response.usuario))
       setUser(response.usuario)
-      return { success: true }
+      return { success: true, usuario: response.usuario }
     }
     
     throw new Error(response.error || 'Erro ao fazer login')
@@ -40,7 +44,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem('token', response.token || 'dummy-token')
       localStorage.setItem('user', JSON.stringify(response.usuario))
       setUser(response.usuario)
-      return { success: true }
+      return { success: true, usuario: response.usuario }
     }
     
     throw new Error(response.error || 'Erro ao criar conta')

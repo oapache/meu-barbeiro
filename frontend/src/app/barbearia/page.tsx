@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
+import { listLocalAgendamentos } from '@/lib/agendamentos'
 import { Calendar, Users, Scissors, Plus, CheckCircle, XCircle, Clock } from 'lucide-react'
 
 type StatusAgenda = 'confirmado' | 'pendente' | 'cancelado'
 
 type Agendamento = {
-  id: number
+  id: string | number
   cliente_nome: string
   servico: string
   hora: string
@@ -26,33 +27,48 @@ type Servico = {
 
 type AuthUser = {
   nome?: string
+  tipo?: string
 }
 
 type AuthState = {
   user?: AuthUser
   logout: () => void
   isAuthenticated: boolean
+  loading: boolean
 }
 
 export default function BarbeariaDashboard() {
-  const { user, logout, isAuthenticated } = useAuth() as AuthState
+  const { user, logout, isAuthenticated, loading: authLoading } = useAuth() as AuthState
   const [activeTab, setActiveTab] = useState('agenda')
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [servicos, setServicos] = useState<Servico[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading) return
+
     if (!isAuthenticated) {
       window.location.href = '/login'
       return
     }
+
+    if (user?.tipo === 'cliente') {
+      window.location.href = '/perfil'
+      return
+    }
     
-    // Carregar dados mockados (depois conectar com API)
-    setAgendamentos([
-      { id: 1, cliente_nome: 'Pedro', servico: 'Corte Masculino', hora: '14:00', status: 'confirmado', data: '2026-03-14' },
-      { id: 2, cliente_nome: 'Maria', servico: 'Barba', hora: '15:00', status: 'pendente', data: '2026-03-14' },
-      { id: 3, cliente_nome: 'Carlos', servico: 'Corte + Barba', hora: '16:00', status: 'confirmado', data: '2026-03-14' },
-    ])
+    const locais = listLocalAgendamentos()
+      .filter((item) => item?.barbearia_nome === 'Barbearia do João')
+      .map((item) => ({
+        id: item.id,
+        cliente_nome: item.cliente_nome || 'Cliente',
+        servico: item.servico_nome || 'Serviço agendado',
+        hora: item.hora,
+        status: (item.status === 'agendado' ? 'pendente' : 'confirmado') as StatusAgenda,
+        data: item.data,
+      }))
+
+    setAgendamentos(locais)
     
     setServicos([
       { id: 1, nome: 'Corte Masculino', preco: 45, duracao: 30 },
@@ -61,7 +77,7 @@ export default function BarbeariaDashboard() {
     ])
     
     setLoading(false)
-  }, [isAuthenticated])
+  }, [authLoading, isAuthenticated, user?.tipo])
 
   const handleLogout = () => {
     logout()
