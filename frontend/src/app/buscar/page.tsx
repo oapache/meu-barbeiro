@@ -33,10 +33,24 @@ export default function BuscarPage() {
       {/* Header */}
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4">
-          <Link href="/" className="flex items-center gap-3 mb-4">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-            <span className="text-lg font-bold">Meu Barbeiro</span>
-          </Link>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <Link href="/" className="flex items-center gap-3">
+              <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+              <span className="text-lg font-bold">Meu Barbeiro</span>
+            </Link>
+
+            <nav className="flex items-center gap-4 md:gap-6 text-sm">
+              <Link href="/" className="text-zinc-300 hover:text-white transition">
+                Início
+              </Link>
+              <Link href="/buscar" className="text-white font-medium">
+                Buscar
+              </Link>
+              <Link href="/perfil" className="text-zinc-300 hover:text-white transition">
+                Perfil
+              </Link>
+            </nav>
+          </div>
           
           {/* Busca */}
           <div className="relative">
