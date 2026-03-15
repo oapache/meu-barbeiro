@@ -1,15 +1,16 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Search, MapPin, Star } from 'lucide-react'
+import ApiService from '@/services/api'
 
 type BarbeariaResumo = {
-  id: string
+  id: string | number
   nome: string
   endereco: string
-  latitude: number
-  longitude: number
+  latitude: number | null
+  longitude: number | null
   nota: number
   categoria: string
   aberto: boolean
@@ -46,43 +47,44 @@ const calcularDistanciaKm = (origem: LocalizacaoCliente, destino: { latitude: nu
 
 export default function BuscarPage() {
   const [busca, setBusca] = useState('')
+  const [barbearias, setBarbearias] = useState<BarbeariaResumo[]>([])
+  const [carregandoBarbearias, setCarregandoBarbearias] = useState(true)
+  const [erroBarbearias, setErroBarbearias] = useState('')
   const [localizacaoCliente, setLocalizacaoCliente] = useState<LocalizacaoCliente | null>(null)
   const [statusLocalizacao, setStatusLocalizacao] = useState<string>('')
   const [solicitandoLocalizacao, setSolicitandoLocalizacao] = useState(false)
 
-  // Dados mockados (depois conectar com API)
-  const mockBarbearias: BarbeariaResumo[] = [
-    {
-      id: '1',
-      nome: 'Barbearia do João',
-      endereco: 'Centro, São Paulo, SP',
-      latitude: -23.55052,
-      longitude: -46.63331,
-      nota: 4.8,
-      categoria: 'Premium',
-      aberto: true,
-    },
-    {
-      id: '2',
-      nome: 'Barbearia Moderno',
-      endereco: 'Pinheiros, São Paulo, SP',
-      latitude: -23.56622,
-      longitude: -46.69233,
-      nota: 4.5,
-      categoria: 'Moderna',
-      aberto: true,
-    },
-    {
-      id: '3',
-      nome: 'Corte & Estilo',
-      endereco: 'Moema, São Paulo, SP',
-      latitude: -23.60153,
-      longitude: -46.66808,
-      nota: 4.9,
-      categoria: 'Clássica',
-      aberto: false,
-    },
-  ]
+  useEffect(() => {
+    const carregarBarbearias = async () => {
+      try {
+        setCarregandoBarbearias(true)
+        setErroBarbearias('')
+
+        const resposta = await ApiService.listBarbearias()
+        const lista = Array.isArray(resposta?.barbearias) ? resposta.barbearias : []
+
+        const normalizadas: BarbeariaResumo[] = lista.map((item: any) => ({
+          id: item.id,
+          nome: item.nome || 'Barbearia sem nome',
+          endereco: item.endereco || 'Endereco nao informado',
+          latitude: item.latitude !== undefined && item.latitude !== null ? Number(item.latitude) : null,
+          longitude: item.longitude !== undefined && item.longitude !== null ? Number(item.longitude) : null,
+          nota: item.nota_media !== undefined && item.nota_media !== null ? Number(item.nota_media) : 0,
+          categoria: item.categoria || 'Barbearia',
+          aberto: item.aberto !== false,
+        }))
+
+        setBarbearias(normalizadas)
+      } catch {
+        setErroBarbearias('Nao foi possivel carregar as barbearias no momento.')
+        setBarbearias([])
+      } finally {
+        setCarregandoBarbearias(false)
+      }
+    }
+
+    carregarBarbearias()
+  }, [])
 
   const solicitarLocalizacao = () => {
     if (!navigator.geolocation) {
@@ -114,20 +116,24 @@ export default function BuscarPage() {
   }
 
   const barbeariasComDistancia = useMemo(() => {
-    return mockBarbearias
+    return barbearias
       .filter((b) => b.nome.toLowerCase().includes(busca.toLowerCase()))
       .map((barbearia) => {
-        const distanciaKm = localizacaoCliente
+        const latitude = barbearia.latitude
+        const longitude = barbearia.longitude
+        const possuiCoordenadas = latitude !== null && longitude !== null
+
+        const distanciaKm = localizacaoCliente && possuiCoordenadas
           ? calcularDistanciaKm(localizacaoCliente, {
-              latitude: barbearia.latitude,
-              longitude: barbearia.longitude,
+              latitude,
+              longitude,
             })
           : null
 
         return {
           ...barbearia,
           distanciaKm,
-          distanciaLabel: distanciaKm !== null ? formatarDistancia(distanciaKm) : 'Distancia indisponivel',
+          distanciaLabel: distanciaKm !== null ? formatarDistancia(distanciaKm) : 'Localizacao nao informada',
         }
       })
       .sort((a, b) => {
@@ -136,7 +142,7 @@ export default function BuscarPage() {
         if (b.distanciaKm === null) return -1
         return a.distanciaKm - b.distanciaKm
       })
-  }, [busca, localizacaoCliente])
+  }, [barbearias, busca, localizacaoCliente])
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -224,9 +230,21 @@ export default function BuscarPage() {
               </div>
             )}
 
+            {erroBarbearias && (
+              <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                {erroBarbearias}
+              </div>
+            )}
+
             <div className="grid gap-3 md:grid-cols-2">
+              {carregandoBarbearias && (
+                <div className="md:col-span-2 text-center py-12 text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-xl">
+                  Carregando barbearias...
+                </div>
+              )}
+
               {barbeariasComDistancia.map((barbearia) => (
-                <Link key={barbearia.id} href={`/barberia/${barbearia.id}`}>
+                <Link key={barbearia.id} href={`/barberia/${String(barbearia.id)}`}>
                   <div className="h-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
                     <div className="flex items-start gap-4">
                       <div className="w-16 h-16 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0">
@@ -259,7 +277,7 @@ export default function BuscarPage() {
                 </Link>
               ))}
 
-              {barbeariasComDistancia.length === 0 && (
+              {!carregandoBarbearias && barbeariasComDistancia.length === 0 && (
                 <div className="md:col-span-2 text-center py-12 text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-xl">
                   <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>Nenhuma barbearia encontrada</p>
