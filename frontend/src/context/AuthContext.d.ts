@@ -18,7 +18,7 @@ declare module '@/context/AuthContext' {
     user: AuthUser | null
     loading: boolean
     isAuthenticated: boolean
-    login: (email: string, senha: string) => Promise<{ success: boolean; usuario: AuthUser }>
+    login: (email: string, senha: string, rememberSession?: boolean) => Promise<{ success: boolean; usuario: AuthUser }>
     register: (data: RegisterPayload) => Promise<{ success: boolean; usuario: AuthUser }>
     logout: () => void
   }

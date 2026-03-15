@@ -10,6 +10,7 @@ export default function LoginPage() {
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberSession, setRememberSession] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -19,7 +20,7 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const result = await login(email, password)
+      const result = await login(email, password, rememberSession)
       router.push(getRedirectByUserType(result.usuario))
     } catch (err) {
       setError(err.message || 'Erro ao fazer login')
@@ -120,6 +121,16 @@ export default function LoginPage() {
                   required
                 />
               </div>
+
+              <label className="flex items-center gap-2 text-sm text-zinc-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberSession}
+                  onChange={(e) => setRememberSession(e.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-white focus:ring-white"
+                />
+                Lembrar senha
+              </label>
 
               <button
                 type="submit"
