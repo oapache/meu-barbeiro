@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
 import { listLocalAgendamentos } from '@/lib/agendamentos'
-import { Calendar, Users, Scissors, Plus, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Calendar, Users, Scissors, Plus, CheckCircle, XCircle, Clock, Settings, Store } from 'lucide-react'
 
 type StatusAgenda = 'confirmado' | 'pendente' | 'cancelado'
 
@@ -26,8 +26,15 @@ type Servico = {
 }
 
 type AuthUser = {
+  id?: string | number
   nome?: string
   tipo?: string
+}
+
+type BarbeariaPerfil = {
+  id: string | number
+  nome: string
+  usuario_id?: string | number
 }
 
 type AuthState = {
@@ -42,6 +49,8 @@ export default function BarbeariaDashboard() {
   const [activeTab, setActiveTab] = useState('agenda')
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [servicos, setServicos] = useState<Servico[]>([])
+  const [barbearia, setBarbearia] = useState<BarbeariaPerfil | null>(null)
+  const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -56,27 +65,60 @@ export default function BarbeariaDashboard() {
       window.location.href = '/perfil'
       return
     }
-    
-    const locais = listLocalAgendamentos()
-      .filter((item) => item?.barbearia_nome === 'Barbearia do João')
-      .map((item) => ({
-        id: item.id,
-        cliente_nome: item.cliente_nome || 'Cliente',
-        servico: item.servico_nome || 'Serviço agendado',
-        hora: item.hora,
-        status: (item.status === 'agendado' ? 'pendente' : 'confirmado') as StatusAgenda,
-        data: item.data,
-      }))
 
-    setAgendamentos(locais)
-    
-    setServicos([
-      { id: 1, nome: 'Corte Masculino', preco: 45, duracao: 30 },
-      { id: 2, nome: 'Barba', preco: 35, duracao: 20 },
-      { id: 3, nome: 'Corte + Barba', preco: 70, duracao: 45 },
-    ])
-    
-    setLoading(false)
+    const carregarDashboard = async () => {
+      try {
+        setLoading(true)
+        setErro('')
+
+        const respostaBarbearias = await ApiService.listBarbearias()
+        const listaBarbearias = Array.isArray(respostaBarbearias?.barbearias) ? respostaBarbearias.barbearias : []
+
+        const barbeariaDoUsuario = listaBarbearias.find((item: any) => String(item?.usuario_id) === String(user?.id)) || null
+        setBarbearia(barbeariaDoUsuario)
+
+        if (!barbeariaDoUsuario) {
+          setAgendamentos([])
+          setServicos([])
+          return
+        }
+
+        const locais = listLocalAgendamentos()
+          .filter((item) => item?.barbearia_nome === barbeariaDoUsuario.nome)
+          .map((item) => ({
+            id: item.id,
+            cliente_nome: item.cliente_nome || 'Cliente',
+            servico: item.servico_nome || 'Servico agendado',
+            hora: item.hora,
+            status: (item.status === 'agendado' ? 'pendente' : 'confirmado') as StatusAgenda,
+            data: item.data,
+          }))
+
+        setAgendamentos(locais)
+
+        try {
+          const respostaServicos = await ApiService.listServicos(barbeariaDoUsuario.id)
+          const listaServicos = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
+
+          setServicos(
+            listaServicos.map((servico: any) => ({
+              id: servico.id,
+              nome: servico.nome,
+              preco: Number(servico.preco || 0),
+              duracao: Number(servico.duracao_minutos || 0),
+            }))
+          )
+        } catch {
+          setServicos([])
+        }
+      } catch {
+        setErro('Nao foi possivel carregar os dados da sua barbearia agora.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    carregarDashboard()
   }, [authLoading, isAuthenticated, user?.tipo])
 
   const handleLogout = () => {
@@ -114,24 +156,30 @@ export default function BarbeariaDashboard() {
     <main className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 px-4 py-4">
-        <div className="max-w-4xl mx-auto flex justify-between items-center">
+        <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
           <div>
-            <h1 className="text-lg font-bold">Barbearia do João</h1>
+            <h1 className="text-lg md:text-2xl font-bold">{barbearia?.nome || 'Minha Barbearia'}</h1>
             <p className="text-xs text-zinc-400">Bem-vindo, {user?.nome || 'Barbeiro'}</p>
           </div>
-          <button onClick={handleLogout} className="text-sm text-zinc-400 hover:text-white">
-            Sair
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/barberia/configurar" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-700 text-sm hover:bg-zinc-800">
+              <Settings className="w-4 h-4" />
+              Configurar
+            </Link>
+            <button onClick={handleLogout} className="text-sm text-zinc-400 hover:text-white">
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Tabs */}
-      <div className="bg-zinc-900 border-b border-zinc-800">
-        <div className="max-w-4xl mx-auto flex">
+      <div className="bg-zinc-900/60 border-b border-zinc-800">
+        <div className="max-w-6xl mx-auto flex gap-2 px-4 py-2">
           <button
             onClick={() => setActiveTab('agenda')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 flex items-center justify-center gap-2 ${
-              activeTab === 'agenda' ? 'border-white text-white' : 'border-transparent text-zinc-500'
+            className={`px-4 py-2 text-sm font-medium rounded-lg border flex items-center justify-center gap-2 ${
+              activeTab === 'agenda' ? 'border-white text-white bg-zinc-800' : 'border-zinc-700 text-zinc-400'
             }`}
           >
             <Calendar className="w-4 h-4" />
@@ -139,8 +187,8 @@ export default function BarbeariaDashboard() {
           </button>
           <button
             onClick={() => setActiveTab('servicos')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 flex items-center justify-center gap-2 ${
-              activeTab === 'servicos' ? 'border-white text-white' : 'border-transparent text-zinc-500'
+            className={`px-4 py-2 text-sm font-medium rounded-lg border flex items-center justify-center gap-2 ${
+              activeTab === 'servicos' ? 'border-white text-white bg-zinc-800' : 'border-zinc-700 text-zinc-400'
             }`}
           >
             <Scissors className="w-4 h-4" />
@@ -148,8 +196,8 @@ export default function BarbeariaDashboard() {
           </button>
           <button
             onClick={() => setActiveTab('clientes')}
-            className={`flex-1 py-3 text-sm font-medium border-b-2 flex items-center justify-center gap-2 ${
-              activeTab === 'clientes' ? 'border-white text-white' : 'border-transparent text-zinc-500'
+            className={`px-4 py-2 text-sm font-medium rounded-lg border flex items-center justify-center gap-2 ${
+              activeTab === 'clientes' ? 'border-white text-white bg-zinc-800' : 'border-zinc-700 text-zinc-400'
             }`}
           >
             <Users className="w-4 h-4" />
@@ -159,17 +207,58 @@ export default function BarbeariaDashboard() {
       </div>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {erro && (
+          <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {erro}
+          </div>
+        )}
+
+        {!barbearia && !erro && (
+          <div className="mb-6 rounded-2xl border border-yellow-500/40 bg-yellow-500/10 p-5 flex items-start gap-3">
+            <Store className="w-5 h-5 mt-0.5 text-yellow-300" />
+            <div>
+              <p className="font-medium text-yellow-100">Voce ainda nao tem uma barbearia cadastrada.</p>
+              <p className="text-sm text-yellow-200/80 mt-1">Acesse Configurar para criar sua barbearia e cadastrar seus servicos.</p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Agendamentos</p>
+            <p className="text-2xl font-bold mt-1">{agendamentos.length}</p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Servicos</p>
+            <p className="text-2xl font-bold mt-1">{servicos.length}</p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Pendentes</p>
+            <p className="text-2xl font-bold mt-1">{agendamentos.filter((a) => a.status === 'pendente').length}</p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Confirmados</p>
+            <p className="text-2xl font-bold mt-1">{agendamentos.filter((a) => a.status === 'confirmado').length}</p>
+          </div>
+        </div>
+
         {activeTab === 'agenda' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Hoje - 14/03</h2>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium">
+              <button className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium" disabled>
                 <Plus className="w-4 h-4" />
                 Novo
               </button>
             </div>
-            
+
+            {agendamentos.length === 0 && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
+                Nenhum agendamento encontrado ainda.
+              </div>
+            )}
+
             {agendamentos.map((agenda) => (
               <div key={agenda.id} className="bg-zinc-900 rounded-xl p-4 flex justify-between items-center">
                 <div>
@@ -192,12 +281,18 @@ export default function BarbeariaDashboard() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Meus Serviços</h2>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium">
+              <Link href="/barberia/configurar" className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium">
                 <Plus className="w-4 h-4" />
                 Novo
-              </button>
+              </Link>
             </div>
-            
+
+            {servicos.length === 0 && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
+                Nenhum servico cadastrado. Clique em Novo para adicionar seu primeiro servico.
+              </div>
+            )}
+
             {servicos.map((servico) => (
               <div key={servico.id} className="bg-zinc-900 rounded-xl p-4 flex justify-between items-center">
                 <div>
@@ -217,20 +312,6 @@ export default function BarbeariaDashboard() {
             <p className="text-sm mt-2">Os clientes aparecem quando fazem um agendamento.</p>
           </div>
         )}
-      </div>
-
-      {/* WhatsApp Flutuante */}
-      <div className="fixed bottom-6 right-6">
-        <a
-          href="https://wa.me/5511999999999"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-green-500 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-green-600 transition"
-        >
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
-        </a>
       </div>
     </main>
   )
