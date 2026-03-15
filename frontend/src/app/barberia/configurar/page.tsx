@@ -4,7 +4,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
-import { Save, Upload, Phone, MapPin, Clock } from 'lucide-react'
+import { Save, Upload, Phone, MapPin, Clock, BadgeCheck } from 'lucide-react'
 
 type UsuarioLogado = {
   id?: string | number
@@ -14,10 +14,67 @@ type FormBarbearia = {
   nome: string
   telefone: string
   whatsapp: string
-  endereco: string
+  cep: string
+  rua: string
+  numero: string
+  complemento: string
+  bairro: string
+  cidade: string
+  estado: string
   horario_abertura: string
   horario_fechamento: string
   logo_url: string
+}
+
+type HorarioDia = {
+  key: string
+  label: string
+  fechado: boolean
+  abertura: string
+  fechamento: string
+}
+
+const DIAS_SEMANA: Array<{ key: string; label: string }> = [
+  { key: 'segunda', label: 'Segunda-feira' },
+  { key: 'terca', label: 'Terca-feira' },
+  { key: 'quarta', label: 'Quarta-feira' },
+  { key: 'quinta', label: 'Quinta-feira' },
+  { key: 'sexta', label: 'Sexta-feira' },
+  { key: 'sabado', label: 'Sabado' },
+  { key: 'domingo', label: 'Domingo' },
+]
+
+const criarHorariosPadrao = (): HorarioDia[] =>
+  DIAS_SEMANA.map((dia) => ({
+    key: dia.key,
+    label: dia.label,
+    fechado: dia.key === 'domingo',
+    abertura: '09:00',
+    fechamento: '18:00',
+  }))
+
+const mascaraCep = (valor: string) => {
+  const numeros = valor.replace(/\D/g, '').slice(0, 8)
+  if (numeros.length <= 5) return numeros
+  return `${numeros.slice(0, 5)}-${numeros.slice(5)}`
+}
+
+const montarEndereco = (form: FormBarbearia) => {
+  const parteRua = `${form.rua}, ${form.numero}`
+  const parteComplemento = form.complemento ? ` - ${form.complemento}` : ''
+  const parteCidade = `${form.bairro}, ${form.cidade}/${form.estado}`
+  const parteCep = form.cep ? ` - CEP ${form.cep}` : ''
+  return `${parteRua}${parteComplemento}, ${parteCidade}${parteCep}`
+}
+
+const parseEndereco = (endereco: string) => {
+  const cepMatch = endereco.match(/(\d{5}-?\d{3})/)
+  const ufMatch = endereco.match(/\/([A-Za-z]{2})\b/)
+
+  return {
+    cep: cepMatch ? mascaraCep(cepMatch[1]) : '',
+    estado: ufMatch ? ufMatch[1].toUpperCase() : '',
+  }
 }
 
 export default function ConfigurarPage() {
@@ -25,14 +82,22 @@ export default function ConfigurarPage() {
   const { user } = useAuth() as { user?: UsuarioLogado }
   const [loading, setLoading] = useState(false)
   const [loadingInicial, setLoadingInicial] = useState(true)
+  const [loadingCep, setLoadingCep] = useState(false)
   const [message, setMessage] = useState('')
   const [barbeariaId, setBarbeariaId] = useState<string | number | null>(null)
+  const [horarios, setHorarios] = useState<HorarioDia[]>(criarHorariosPadrao())
 
   const [form, setForm] = useState<FormBarbearia>({
     nome: '',
     telefone: '',
     whatsapp: '',
-    endereco: '',
+    cep: '',
+    rua: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    cidade: '',
+    estado: '',
     horario_abertura: '',
     horario_fechamento: '',
     logo_url: '',
@@ -52,11 +117,18 @@ export default function ConfigurarPage() {
 
         if (atual) {
           setBarbeariaId(atual.id)
+          const enderecoParseado = parseEndereco(atual.endereco || '')
           setForm({
             nome: atual.nome || '',
             telefone: atual.telefone || '',
             whatsapp: atual.whatsapp_link || '',
-            endereco: atual.endereco || '',
+            cep: enderecoParseado.cep,
+            rua: '',
+            numero: '',
+            complemento: '',
+            bairro: '',
+            cidade: '',
+            estado: enderecoParseado.estado,
             horario_abertura: atual.horario_abertura || '',
             horario_fechamento: atual.horario_fechamento || '',
             logo_url: atual.logo_url || '',
@@ -72,18 +144,121 @@ export default function ConfigurarPage() {
     carregarBarbearia()
   }, [user?.id])
 
+  useEffect(() => {
+    if (!user?.id) return
+    const storageKey = `barbearia_horarios_${barbeariaId || user.id}`
+    const salvo = localStorage.getItem(storageKey)
+    if (!salvo) return
+
+    try {
+      const parsed = JSON.parse(salvo)
+      if (Array.isArray(parsed) && parsed.length === 7) {
+        setHorarios(parsed)
+      }
+    } catch {
+      // ignore parse error
+    }
+  }, [barbeariaId, user?.id])
+
+  const buscarCep = async () => {
+    const cepNumerico = form.cep.replace(/\D/g, '')
+    if (cepNumerico.length !== 8) {
+      setMessage('Informe um CEP valido com 8 digitos.')
+      return
+    }
+
+    try {
+      setLoadingCep(true)
+      setMessage('')
+      const resposta = await fetch(`https://viacep.com.br/ws/${cepNumerico}/json/`)
+      const dados = await resposta.json()
+
+      if (dados.erro) {
+        throw new Error('CEP nao encontrado.')
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        cep: mascaraCep(cepNumerico),
+        rua: dados.logradouro || prev.rua,
+        bairro: dados.bairro || prev.bairro,
+        cidade: dados.localidade || prev.cidade,
+        estado: dados.uf || prev.estado,
+      }))
+    } catch (error: any) {
+      setMessage(error?.message || 'Nao foi possivel consultar o CEP.')
+    } finally {
+      setLoadingCep(false)
+    }
+  }
+
+  const atualizarHorarioDia = (key: string, campo: 'fechado' | 'abertura' | 'fechamento', valor: boolean | string) => {
+    setHorarios((prev) =>
+      prev.map((dia) => {
+        if (dia.key !== key) return dia
+        if (campo === 'fechado') {
+          return { ...dia, fechado: Boolean(valor) }
+        }
+        return { ...dia, [campo]: String(valor) }
+      })
+    )
+  }
+
+  const validarEndereco = () => {
+    if (!form.cep || form.cep.replace(/\D/g, '').length !== 8) return 'CEP invalido.'
+    if (!form.rua.trim()) return 'Informe a rua.'
+    if (!form.numero.trim()) return 'Informe o numero.'
+    if (!form.bairro.trim()) return 'Informe o bairro.'
+    if (!form.cidade.trim()) return 'Informe a cidade.'
+    if (!form.estado.trim() || form.estado.trim().length !== 2) return 'Informe o estado com 2 letras.'
+    return null
+  }
+
+  const validarHorarios = () => {
+    const diasAbertos = horarios.filter((dia) => !dia.fechado)
+    if (diasAbertos.length === 0) return 'Configure ao menos um dia de funcionamento.'
+
+    for (const dia of diasAbertos) {
+      if (!dia.abertura || !dia.fechamento) return `Defina abertura e fechamento para ${dia.label}.`
+      if (dia.abertura >= dia.fechamento) return `Horario invalido em ${dia.label}.`
+    }
+
+    return null
+  }
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setMessage('')
 
     try {
+      const erroEndereco = validarEndereco()
+      if (erroEndereco) {
+        throw new Error(erroEndereco)
+      }
+
+      const erroHorarios = validarHorarios()
+      if (erroHorarios) {
+        throw new Error(erroHorarios)
+      }
+
+      const diasAbertos = horarios.filter((dia) => !dia.fechado)
+      const primeiraAbertura = diasAbertos
+        .map((dia) => dia.abertura)
+        .sort()[0]
+      const ultimoFechamento = diasAbertos
+        .map((dia) => dia.fechamento)
+        .sort()
+        .reverse()[0]
+
+      const enderecoCompleto = montarEndereco(form)
+
       const payload = {
         nome: form.nome,
         telefone: form.telefone,
-        endereco: form.endereco,
-        horario_abertura: form.horario_abertura || '09:00',
-        horario_fechamento: form.horario_fechamento || '20:00',
+        endereco: enderecoCompleto,
+        horario_abertura: primeiraAbertura || '09:00',
+        horario_fechamento: ultimoFechamento || '20:00',
         usuario_id: user?.id,
         logo_url: form.logo_url || null,
         whatsapp_link: form.whatsapp || null,
@@ -107,6 +282,9 @@ export default function ConfigurarPage() {
         }
       }
 
+      const storageKey = `barbearia_horarios_${barbeariaId || user.id}`
+      localStorage.setItem(storageKey, JSON.stringify(horarios))
+
       setMessage('Salvo com sucesso!')
     } catch (error: any) {
       setMessage(error?.message || 'Erro ao salvar')
@@ -122,6 +300,12 @@ export default function ConfigurarPage() {
       setForm({ ...form, logo_url: url })
     }
   }
+
+  const qualidadeEndereco = Boolean(
+    form.cep && form.rua && form.numero && form.bairro && form.cidade && form.estado
+  )
+  const qualidadeHorarios = horarios.some((dia) => !dia.fechado)
+  const qualidadeCadastro = qualidadeEndereco && qualidadeHorarios && Boolean(form.nome.trim())
 
   if (loadingInicial) {
     return (
@@ -158,6 +342,13 @@ export default function ConfigurarPage() {
           <div className="lg:col-span-1">
             <div className="bg-zinc-900 rounded-xl p-6 sticky top-6">
               <h2 className="font-medium mb-4">Logo da Barbearia</h2>
+
+              <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${qualidadeCadastro ? 'border-green-500/40 bg-green-500/10 text-green-200' : 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200'}`}>
+                <div className="flex items-center gap-2">
+                  <BadgeCheck className="w-4 h-4" />
+                  {qualidadeCadastro ? 'Perfil com qualidade para clientes' : 'Complete os dados para transmitir qualidade'}
+                </div>
+              </div>
 
               <div className="w-28 h-28 rounded-xl bg-zinc-800 flex items-center justify-center overflow-hidden mb-4">
                 {form.logo_url ? (
@@ -225,46 +416,138 @@ export default function ConfigurarPage() {
                 />
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <label className="block text-sm text-zinc-400 mb-1">CEP</label>
+                  <input
+                    type="text"
+                    value={form.cep}
+                    onChange={(e) => setForm({ ...form, cep: mascaraCep(e.target.value) })}
+                    onBlur={buscarCep}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                    placeholder="00000-000"
+                  />
+                </div>
+                <div className="md:col-span-2 flex items-end">
+                  <button
+                    type="button"
+                    onClick={buscarCep}
+                    disabled={loadingCep}
+                    className="h-12 px-4 rounded-lg border border-zinc-700 text-sm hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    {loadingCep ? 'Buscando CEP...' : 'Buscar CEP'}
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm text-zinc-400 mb-1 flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
-                  Endereco
+                  Rua
                 </label>
                 <input
                   type="text"
-                  value={form.endereco}
-                  onChange={(e) => setForm({ ...form, endereco: e.target.value })}
+                  value={form.rua}
+                  onChange={(e) => setForm({ ...form, rua: e.target.value })}
                   className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
-                  placeholder="Rua, numero, bairro, cidade"
+                  placeholder="Rua"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-1">Numero</label>
+                  <input
+                    type="text"
+                    value={form.numero}
+                    onChange={(e) => setForm({ ...form, numero: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                    placeholder="56"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-zinc-400 mb-1">Complemento</label>
+                  <input
+                    type="text"
+                    value={form.complemento}
+                    onChange={(e) => setForm({ ...form, complemento: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                    placeholder="Sala, referencia, etc."
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-1">Bairro</label>
+                  <input
+                    type="text"
+                    value={form.bairro}
+                    onChange={(e) => setForm({ ...form, bairro: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  />
+                </div>
+                <div className="md:col-span-1">
+                  <label className="block text-sm text-zinc-400 mb-1">Cidade</label>
+                  <input
+                    type="text"
+                    value={form.cidade}
+                    onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-1">UF</label>
+                  <input
+                    type="text"
+                    value={form.estado}
+                    onChange={(e) => setForm({ ...form, estado: e.target.value.toUpperCase().slice(0, 2) })}
+                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                    placeholder="SP"
+                  />
+                </div>
               </div>
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
               <h2 className="font-medium flex items-center gap-2">
                 <Clock className="w-4 h-4" />
-                Horarios de Funcionamento
+                Horarios de Funcionamento (por dia)
               </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-zinc-400 mb-1">Abertura</label>
-                  <input
-                    type="time"
-                    value={form.horario_abertura}
-                    onChange={(e) => setForm({ ...form, horario_abertura: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-zinc-400 mb-1">Fechamento</label>
-                  <input
-                    type="time"
-                    value={form.horario_fechamento}
-                    onChange={(e) => setForm({ ...form, horario_fechamento: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
-                  />
-                </div>
+              <div className="space-y-3">
+                {horarios.map((dia) => (
+                  <div key={dia.key} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+                      <div className="w-full md:w-44 text-sm font-medium">{dia.label}</div>
+                      <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
+                        <input
+                          type="checkbox"
+                          checked={dia.fechado}
+                          onChange={(e) => atualizarHorarioDia(dia.key, 'fechado', e.target.checked)}
+                        />
+                        Fechado
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={dia.abertura}
+                          disabled={dia.fechado}
+                          onChange={(e) => atualizarHorarioDia(dia.key, 'abertura', e.target.value)}
+                          className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:opacity-50"
+                        />
+                        <span className="text-zinc-500">ate</span>
+                        <input
+                          type="time"
+                          value={dia.fechamento}
+                          disabled={dia.fechado}
+                          onChange={(e) => atualizarHorarioDia(dia.key, 'fechamento', e.target.value)}
+                          className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
