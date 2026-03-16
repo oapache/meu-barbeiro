@@ -76,6 +76,22 @@ function ratingStars(rating: number) {
   return '★'.repeat(full) + '☆'.repeat(5 - full)
 }
 
+const initialsFromName = (name: string) => {
+  const clean = name.trim()
+  if (!clean) return 'MB'
+  const parts = clean.split(' ').filter(Boolean)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
+}
+
+function MonochromeAvatar({ label, className }: { label: string; className: string }) {
+  return (
+    <div className={`${className} rounded-xl border border-white/20 bg-gradient-to-br from-zinc-800 to-zinc-950 flex items-center justify-center`}>
+      <span className="text-zinc-100 font-semibold tracking-wider">{initialsFromName(label)}</span>
+    </div>
+  )
+}
+
 const carregarJsonStorage = <T,>(key: string, fallback: T): T => {
   const raw = localStorage.getItem(key)
   if (!raw) return fallback
@@ -92,6 +108,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
   const [activeTab, setActiveTab] = useState<TabKey>('services')
   const [shop, setShop] = useState(defaultShop)
   const [loading, setLoading] = useState(true)
+  const [logoError, setLogoError] = useState(false)
 
   useEffect(() => {
     const carregarBarbearia = async () => {
@@ -211,20 +228,31 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
     <main className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/" className="flex items-center gap-3">
+              <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+              <span className="text-lg font-bold text-white">Meu Barbeiro</span>
+            </Link>
+            <div className="hidden md:block border-l border-zinc-700 pl-3 min-w-0">
+              <span className="font-semibold truncate block">{shop.name}</span>
+            </div>
+          </div>
+
+          <nav className="hidden md:flex items-center gap-5 text-sm">
+            <Link href="/" className="text-zinc-300 hover:text-white transition">Início</Link>
+            <Link href="/buscar" className="text-white font-medium">Buscar</Link>
+          </nav>
+
           <Link href="/buscar" className="flex items-center gap-2 text-zinc-300 hover:text-white">
             <ArrowLeft className="w-5 h-5" />
             <span>Voltar</span>
           </Link>
-          <span className="font-bold truncate">{shop.name}</span>
-          <button className="text-zinc-300 hover:text-white">
-            <Star className="w-5 h-5" />
-          </button>
         </div>
       </header>
 
       {/* Banner */}
-      <section className="relative border-b border-white/10">
+      <section className="relative border-b border-white/10 pt-16">
         <div className="h-64 w-full bg-cover bg-center md:h-80" style={{ backgroundImage: `url(${shop.bannerImage})` }}>
           <div className="h-full w-full bg-gradient-to-t from-black via-black/60 to-black/20" />
         </div>
@@ -233,7 +261,16 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
           <div className="rounded-2xl border border-white/10 bg-zinc-950/95 p-5 backdrop-blur-sm md:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
-                <img src={shop.logoImage} alt={shop.name} className="h-16 w-16 rounded-xl border border-white/20 object-cover sm:h-20 sm:w-20" />
+                {!shop.logoImage || logoError ? (
+                  <MonochromeAvatar label={shop.name} className="h-16 w-16 sm:h-20 sm:w-20" />
+                ) : (
+                  <img
+                    src={shop.logoImage}
+                    alt={shop.name}
+                    onError={() => setLogoError(true)}
+                    className="h-16 w-16 rounded-xl border border-white/20 object-cover sm:h-20 sm:w-20"
+                  />
+                )}
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Barbearia</p>
                   <h1 className="text-2xl font-semibold text-white md:text-3xl">{shop.name}</h1>
@@ -294,10 +331,13 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                   </div>
                 )}
                 {shop.professionals.map((professional) => (
-                  <div key={professional.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
-                    <p className="font-medium text-white">{professional.name}</p>
-                    <p className="text-sm text-zinc-300">{professional.role}</p>
-                    <p className="text-xs text-zinc-500">{professional.experience}</p>
+                  <div key={professional.id} className="rounded-xl border border-white/10 bg-black/50 p-4 flex items-start gap-3">
+                    <MonochromeAvatar label={professional.name} className="h-12 w-12" />
+                    <div>
+                      <p className="font-medium text-white">{professional.name}</p>
+                      <p className="text-sm text-zinc-300">{professional.role}</p>
+                      <p className="text-xs text-zinc-500">{professional.experience}</p>
+                    </div>
                   </div>
                 ))}
               </div>
