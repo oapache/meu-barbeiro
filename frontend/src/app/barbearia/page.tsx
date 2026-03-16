@@ -39,13 +39,21 @@ type BarbeariaPerfil = {
 
 type TipoServicoInline = 'cabelo' | 'cabelo_sobrancelha' | 'barba' | 'cabelo_barba' | 'corte_feminino'
 
-const SERVICO_POR_TIPO_INLINE: Record<TipoServicoInline, { nome: string }> = {
-  cabelo: { nome: 'Cabelo' },
-  cabelo_sobrancelha: { nome: 'Cabelo + Sobrancelha' },
-  barba: { nome: 'Barba' },
-  cabelo_barba: { nome: 'Cabelo + Barba' },
-  corte_feminino: { nome: 'Corte Feminino' },
+const SERVICO_POR_TIPO_INLINE: Record<TipoServicoInline, { nome: string; imagem: string }> = {
+  cabelo: { nome: 'Cabelo', imagem: '/service-icons/cabelo.png' },
+  cabelo_sobrancelha: { nome: 'Cabelo + Sobrancelha', imagem: '/service-icons/cabelo-sobrancelha.png' },
+  barba: { nome: 'Barba', imagem: '/service-icons/barba.png' },
+  cabelo_barba: { nome: 'Cabelo + Barba', imagem: '/service-icons/cabelo-barba.png' },
+  corte_feminino: { nome: 'Corte Feminino', imagem: '/service-icons/corte-feminino.png' },
 }
+
+const OPCOES_SERVICO_INLINE: TipoServicoInline[] = [
+  'cabelo',
+  'cabelo_sobrancelha',
+  'barba',
+  'cabelo_barba',
+  'corte_feminino',
+]
 
 type AuthState = {
   user?: AuthUser
@@ -374,18 +382,29 @@ export default function BarbeariaDashboard() {
             {mostrarNovoServico && (
               <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 space-y-3">
                 <p className="text-sm text-zinc-300">Criar novo servico sem sair desta pagina</p>
-                <div className="grid md:grid-cols-3 gap-3">
-                  <select
-                    value={novoServico.tipo}
-                    onChange={(e) => setNovoServico((prev) => ({ ...prev, tipo: e.target.value as TipoServicoInline }))}
-                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
-                  >
-                    <option value="cabelo">Cabelo</option>
-                    <option value="cabelo_sobrancelha">Cabelo + Sobrancelha</option>
-                    <option value="barba">Barba</option>
-                    <option value="cabelo_barba">Cabelo + Barba</option>
-                    <option value="corte_feminino">Corte Feminino</option>
-                  </select>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {OPCOES_SERVICO_INLINE.map((tipo) => {
+                    const item = SERVICO_POR_TIPO_INLINE[tipo]
+                    const selecionado = novoServico.tipo === tipo
+                    return (
+                      <button
+                        key={tipo}
+                        type="button"
+                        onClick={() => setNovoServico((prev) => ({ ...prev, tipo }))}
+                        className={`rounded-lg border p-2 text-center transition ${selecionado ? 'border-white bg-zinc-800' : 'border-zinc-700 bg-zinc-900 hover:bg-zinc-800/70'}`}
+                      >
+                        <img
+                          src={item.imagem}
+                          alt={item.nome}
+                          className="w-12 h-12 rounded-md object-cover mx-auto mb-2 border border-zinc-700"
+                        />
+                        <p className="text-xs text-zinc-200 leading-tight">{item.nome}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
                   <input
                     type="number"
                     min="1"
@@ -404,6 +423,17 @@ export default function BarbeariaDashboard() {
                     className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
                     placeholder="Duracao (min)"
                   />
+                </div>
+                <div className="rounded-lg border border-zinc-700 bg-zinc-800/60 p-3 flex items-center gap-3">
+                  <img
+                    src={SERVICO_POR_TIPO_INLINE[novoServico.tipo].imagem}
+                    alt={SERVICO_POR_TIPO_INLINE[novoServico.tipo].nome}
+                    className="w-12 h-12 rounded-md object-cover border border-zinc-700"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{SERVICO_POR_TIPO_INLINE[novoServico.tipo].nome}</p>
+                    <p className="text-xs text-zinc-400">Servico selecionado</p>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
