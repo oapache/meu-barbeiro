@@ -37,6 +37,16 @@ type BarbeariaPerfil = {
   usuario_id?: string | number
 }
 
+type TipoServicoInline = 'cabelo' | 'cabelo_sobrancelha' | 'barba' | 'cabelo_barba' | 'corte_feminino'
+
+const SERVICO_POR_TIPO_INLINE: Record<TipoServicoInline, { nome: string }> = {
+  cabelo: { nome: 'Cabelo' },
+  cabelo_sobrancelha: { nome: 'Cabelo + Sobrancelha' },
+  barba: { nome: 'Barba' },
+  cabelo_barba: { nome: 'Cabelo + Barba' },
+  corte_feminino: { nome: 'Corte Feminino' },
+}
+
 type AuthState = {
   user?: AuthUser
   logout: () => void
@@ -52,7 +62,7 @@ export default function BarbeariaDashboard() {
   const [barbearia, setBarbearia] = useState<BarbeariaPerfil | null>(null)
   const [mostrarNovoServico, setMostrarNovoServico] = useState(false)
   const [novoServico, setNovoServico] = useState({
-    tipo: 'cabelo',
+    tipo: 'cabelo' as TipoServicoInline,
     preco: '',
     duracao: '40',
   })
@@ -169,7 +179,7 @@ export default function BarbeariaDashboard() {
       return
     }
 
-    const nome = novoServico.tipo === 'cabelo_sobrancelha' ? 'Cabelo + Sobrancelha' : 'Cabelo'
+    const nome = SERVICO_POR_TIPO_INLINE[novoServico.tipo].nome
 
     try {
       const resposta = await ApiService.createServico(barbearia.id, {
@@ -367,11 +377,14 @@ export default function BarbeariaDashboard() {
                 <div className="grid md:grid-cols-3 gap-3">
                   <select
                     value={novoServico.tipo}
-                    onChange={(e) => setNovoServico((prev) => ({ ...prev, tipo: e.target.value }))}
+                    onChange={(e) => setNovoServico((prev) => ({ ...prev, tipo: e.target.value as TipoServicoInline }))}
                     className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
                   >
                     <option value="cabelo">Cabelo</option>
                     <option value="cabelo_sobrancelha">Cabelo + Sobrancelha</option>
+                    <option value="barba">Barba</option>
+                    <option value="cabelo_barba">Cabelo + Barba</option>
+                    <option value="corte_feminino">Corte Feminino</option>
                   </select>
                   <input
                     type="number"

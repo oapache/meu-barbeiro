@@ -57,16 +57,34 @@ type ServicoItem = {
   imagem: string
 }
 
-type TipoServico = 'cabelo' | 'cabelo_sobrancelha'
+type TipoServico = 'cabelo' | 'cabelo_sobrancelha' | 'barba' | 'cabelo_barba' | 'corte_feminino'
 
 const OPCOES_SERVICO: Array<{ value: TipoServico; label: string; image: string }> = [
   { value: 'cabelo', label: 'Cabelo', image: '/service-icons/cabelo.png' },
   { value: 'cabelo_sobrancelha', label: 'Cabelo + Sobrancelha', image: '/service-icons/cabelo-sobrancelha.png' },
+  { value: 'barba', label: 'Barba', image: '/service-icons/barba.png' },
+  { value: 'cabelo_barba', label: 'Cabelo + Barba', image: '/service-icons/cabelo-barba.png' },
+  { value: 'corte_feminino', label: 'Corte Feminino', image: '/service-icons/corte-feminino.png' },
 ]
 
 const SERVICO_POR_TIPO: Record<TipoServico, { nome: string; imagem: string }> = {
   cabelo: { nome: 'Cabelo', imagem: '/service-icons/cabelo.png' },
   cabelo_sobrancelha: { nome: 'Cabelo + Sobrancelha', imagem: '/service-icons/cabelo-sobrancelha.png' },
+  barba: { nome: 'Barba', imagem: '/service-icons/barba.png' },
+  cabelo_barba: { nome: 'Cabelo + Barba', imagem: '/service-icons/cabelo-barba.png' },
+  corte_feminino: { nome: 'Corte Feminino', imagem: '/service-icons/corte-feminino.png' },
+}
+
+const inferirImagemServico = (nomeServico: string) => {
+  const nomeNormalizado = String(nomeServico || '').toLowerCase()
+
+  if (nomeNormalizado.includes('feminino')) return '/service-icons/corte-feminino.png'
+  if (nomeNormalizado.includes('cabelo') && nomeNormalizado.includes('barba')) return '/service-icons/cabelo-barba.png'
+  if (nomeNormalizado.includes('sobrancelha')) return '/service-icons/cabelo-sobrancelha.png'
+  if (nomeNormalizado.includes('barba')) return '/service-icons/barba.png'
+  if (nomeNormalizado.includes('cabelo')) return '/service-icons/cabelo.png'
+
+  return '/service-icons/cabelo.png'
 }
 
 const AMENIDADES_PADRAO = [
@@ -236,10 +254,7 @@ export default function ConfigurarPage() {
             const listaServicos = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
             setServicos(
               listaServicos.map((servico: any) => {
-                const nomeNormalizado = String(servico?.nome || '').toLowerCase()
-                const imagem = nomeNormalizado.includes('sobrancelha')
-                  ? '/service-icons/cabelo-sobrancelha.png'
-                  : '/service-icons/cabelo.png'
+                const imagem = inferirImagemServico(String(servico?.nome || ''))
 
                 return {
                   id: String(servico.id),
