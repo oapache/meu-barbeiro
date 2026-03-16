@@ -46,11 +46,23 @@ async function getPublicStats(req, res) {
     const totalBarbearias = Number(barbeariasResult.rows?.[0]?.total || 0);
     const totalClientes = Number(clientesResult.rows?.[0]?.total || 0);
 
-    const notaResult = await pool.query(
-      'SELECT COALESCE(AVG(NULLIF(nota, 0)), 0)::numeric(10,2) AS media FROM barbearias'
+    const colunaNotaResult = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'barbearias' AND column_name IN ('nota_media', 'nota')
+       ORDER BY CASE WHEN column_name = 'nota_media' THEN 0 ELSE 1 END
+       LIMIT 1`
     );
 
-    const notaMedia = Number(notaResult.rows?.[0]?.media || 0);
+    let notaMedia = 0;
+    const colunaNota = colunaNotaResult.rows?.[0]?.column_name;
+
+    if (colunaNota) {
+      const notaResult = await pool.query(
+        `SELECT COALESCE(AVG(NULLIF(${colunaNota}, 0)), 0)::numeric(10,2) AS media FROM barbearias`
+      );
+      notaMedia = Number(notaResult.rows?.[0]?.media || 0);
+    }
 
     res.json({
       stats: {
