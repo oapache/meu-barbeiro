@@ -50,6 +50,12 @@ export default function BarbeariaDashboard() {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [servicos, setServicos] = useState<Servico[]>([])
   const [barbearia, setBarbearia] = useState<BarbeariaPerfil | null>(null)
+  const [mostrarNovoServico, setMostrarNovoServico] = useState(false)
+  const [novoServico, setNovoServico] = useState({
+    tipo: 'cabelo',
+    preco: '',
+    duracao: '40',
+  })
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -141,6 +147,56 @@ export default function BarbeariaDashboard() {
       case 'pendente': return <Clock className="w-4 h-4" />
       case 'cancelado': return <XCircle className="w-4 h-4" />
       default: return <Clock className="w-4 h-4" />
+    }
+  }
+
+  const criarServicoInline = async () => {
+    if (!barbearia?.id) {
+      setErro('Cadastre sua barbearia antes de criar servicos.')
+      return
+    }
+
+    const preco = Number(String(novoServico.preco).replace(',', '.'))
+    const duracao = Number(novoServico.duracao)
+
+    if (Number.isNaN(preco) || preco <= 0) {
+      setErro('Informe um valor valido para o servico.')
+      return
+    }
+
+    if (Number.isNaN(duracao) || duracao <= 0) {
+      setErro('Informe uma duracao valida em minutos.')
+      return
+    }
+
+    const nome = novoServico.tipo === 'cabelo_sobrancelha' ? 'Cabelo + Sobrancelha' : 'Cabelo'
+
+    try {
+      const resposta = await ApiService.createServico(barbearia.id, {
+        nome,
+        descricao: `Servico ${nome}`,
+        preco,
+        duracao_minutos: duracao,
+      })
+
+      const criado = resposta?.servico
+      if (criado) {
+        setServicos((prev) => [
+          ...prev,
+          {
+            id: criado.id,
+            nome: criado.nome,
+            preco: Number(criado.preco || preco),
+            duracao: Number(criado.duracao_minutos || duracao),
+          },
+        ])
+      }
+
+      setNovoServico({ tipo: 'cabelo', preco: '', duracao: '40' })
+      setMostrarNovoServico(false)
+      setErro('')
+    } catch (error: any) {
+      setErro(error?.message || 'Nao foi possivel criar o servico.')
     }
   }
 
@@ -296,11 +352,62 @@ export default function BarbeariaDashboard() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Meus Serviços</h2>
-              <Link href="/barberia/configurar" className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium">
+              <button
+                onClick={() => setMostrarNovoServico((prev) => !prev)}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium"
+              >
                 <Plus className="w-4 h-4" />
                 Novo
-              </Link>
+              </button>
             </div>
+
+            {mostrarNovoServico && (
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 space-y-3">
+                <p className="text-sm text-zinc-300">Criar novo servico sem sair desta pagina</p>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <select
+                    value={novoServico.tipo}
+                    onChange={(e) => setNovoServico((prev) => ({ ...prev, tipo: e.target.value }))}
+                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
+                  >
+                    <option value="cabelo">Cabelo</option>
+                    <option value="cabelo_sobrancelha">Cabelo + Sobrancelha</option>
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={novoServico.preco}
+                    onChange={(e) => setNovoServico((prev) => ({ ...prev, preco: e.target.value }))}
+                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
+                    placeholder="Valor do corte"
+                  />
+                  <input
+                    type="number"
+                    min="5"
+                    step="5"
+                    value={novoServico.duracao}
+                    onChange={(e) => setNovoServico((prev) => ({ ...prev, duracao: e.target.value }))}
+                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
+                    placeholder="Duracao (min)"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={criarServicoInline}
+                    className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium"
+                  >
+                    Salvar servico
+                  </button>
+                  <button
+                    onClick={() => setMostrarNovoServico(false)}
+                    className="px-4 py-2 rounded-lg border border-zinc-700 text-sm"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {servicos.length === 0 && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
