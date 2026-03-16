@@ -88,6 +88,13 @@ const DAY_KEY_BY_INDEX = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'se
 
 const horarioCurto = (valor: string) => (valor || '').slice(0, 5)
 
+const serviceImageByName = (name: string) => {
+  const normalized = name.toLowerCase()
+  if (normalized.includes('sobrancelha')) return '/service-icons/cabelo-sobrancelha.png'
+  if (normalized.includes('cabelo')) return '/service-icons/cabelo.png'
+  return '/service-icons/cabelo.png'
+}
+
 const initialsFromName = (name: string) => {
   const clean = name.trim()
   if (!clean) return 'MB'
@@ -149,19 +156,19 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             ],
             tagline: `Atendimento profissional na ${barbearia.nome || 'barbearia'}.`,
           }))
-        }
 
-        const horariosSalvos = carregarJsonStorage<any[]>(`barbearia_horarios_${params.id}`, [])
-        if (Array.isArray(horariosSalvos) && horariosSalvos.length > 0) {
-          const semanal = horariosSalvos.map((dia) => ({
-            key: String(dia?.key || ''),
-            label: String(dia?.label || ''),
-            fechado: Boolean(dia?.fechado),
-            abertura: String(dia?.abertura || ''),
-            fechamento: String(dia?.fechamento || ''),
-          }))
-
-          setWeeklySchedule(semanal)
+          const horariosBanco = barbearia.horarios_semana
+          if (Array.isArray(horariosBanco) && horariosBanco.length > 0) {
+            setWeeklySchedule(
+              horariosBanco.map((dia: any) => ({
+                key: String(dia?.key || ''),
+                label: String(dia?.label || ''),
+                fechado: Boolean(dia?.fechado),
+                abertura: String(dia?.abertura || ''),
+                fechamento: String(dia?.fechamento || ''),
+              }))
+            )
+          }
         }
 
         const amenidadesSalvas = carregarJsonStorage<string[]>(`barbearia_amenidades_${params.id}`, [])
@@ -329,9 +336,16 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                 )}
                 {shop.services.map((service) => (
                   <div key={service.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/50 p-4">
-                    <div>
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={serviceImageByName(service.name)}
+                        alt={service.name}
+                        className="w-12 h-12 rounded-lg object-cover border border-white/15"
+                      />
+                      <div>
                       <p className="font-medium text-white">{service.name}</p>
                       <p className="text-sm text-zinc-400">{service.durationMinutes} minutos</p>
+                      </div>
                     </div>
                     <p className="text-lg font-semibold text-white">{formatPrice(service.price)}</p>
                   </div>

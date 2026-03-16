@@ -49,6 +49,26 @@ type Avaliacao = {
   data: string
 }
 
+type ServicoItem = {
+  id: string
+  nome: string
+  preco: number
+  duracao_minutos: number
+  imagem: string
+}
+
+type TipoServico = 'cabelo' | 'cabelo_sobrancelha'
+
+const OPCOES_SERVICO: Array<{ value: TipoServico; label: string; image: string }> = [
+  { value: 'cabelo', label: 'Cabelo', image: '/service-icons/cabelo.png' },
+  { value: 'cabelo_sobrancelha', label: 'Cabelo + Sobrancelha', image: '/service-icons/cabelo-sobrancelha.png' },
+]
+
+const SERVICO_POR_TIPO: Record<TipoServico, { nome: string; imagem: string }> = {
+  cabelo: { nome: 'Cabelo', imagem: '/service-icons/cabelo.png' },
+  cabelo_sobrancelha: { nome: 'Cabelo + Sobrancelha', imagem: '/service-icons/cabelo-sobrancelha.png' },
+}
+
 const AMENIDADES_PADRAO = [
   'Wi-Fi',
   'Ar-condicionado',
@@ -92,13 +112,46 @@ const montarEndereco = (form: FormBarbearia) => {
 }
 
 const parseEndereco = (endereco: string) => {
-  const cepMatch = endereco.match(/(\d{5}-?\d{3})/)
-  const ufMatch = endereco.match(/\/([A-Za-z]{2})\b/)
+  const cepMatch = endereco.match(/CEP\s*(\d{5}-?\d{3})/)
+  const cep = cepMatch ? mascaraCep(cepMatch[1]) : ''
+  const semCep = endereco.replace(/\s*-?\s*CEP\s*\d{5}-?\d{3}/, '').trim()
 
-  return {
-    cep: cepMatch ? mascaraCep(cepMatch[1]) : '',
-    estado: ufMatch ? ufMatch[1].toUpperCase() : '',
+  const partes = semCep.split(',').map((s) => s.trim())
+
+  let rua = ''
+  let numero = ''
+  let complemento = ''
+  let bairro = ''
+  let cidade = ''
+  let estado = ''
+
+  if (partes.length >= 3) {
+    rua = partes[0] || ''
+
+    const segundaParte = partes[1] || ''
+    const compMatch = segundaParte.match(/^(.+?)\s*-\s*(.+)$/)
+    if (compMatch) {
+      numero = compMatch[1].trim()
+      complemento = compMatch[2].trim()
+    } else {
+      numero = segundaParte
+    }
+
+    const cidadeUf = partes[partes.length - 1] || ''
+    const ufMatch = cidadeUf.match(/^(.+?)\/([A-Za-z]{2})$/)
+    if (ufMatch) {
+      cidade = ufMatch[1].trim()
+      estado = ufMatch[2].toUpperCase()
+    } else {
+      cidade = cidadeUf
+    }
+
+    if (partes.length >= 4) {
+      bairro = partes[partes.length - 2] || ''
+    }
   }
+
+  return { rua, numero, complemento, bairro, cidade, estado, cep }
 }
 
 export default function ConfigurarPage() {
@@ -116,6 +169,8 @@ export default function ConfigurarPage() {
   const [novoProfissional, setNovoProfissional] = useState({ nome: '', cargo: '', experiencia: '' })
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
   const [novaAvaliacao, setNovaAvaliacao] = useState({ autor: '', nota: '5', comentario: '' })
+  const [servicos, setServicos] = useState<ServicoItem[]>([])
+  const [novoServico, setNovoServico] = useState({ tipo: 'cabelo' as TipoServico, preco: '', duracao: '40' })
 
   const [form, setForm] = useState<FormBarbearia>({
     nome: '',
@@ -153,16 +208,51 @@ export default function ConfigurarPage() {
             telefone: atual.telefone || '',
             whatsapp: atual.whatsapp_link || '',
             cep: enderecoParseado.cep,
-            rua: '',
-            numero: '',
-            complemento: '',
-            bairro: '',
-            cidade: '',
+            rua: enderecoParseado.rua,
+            numero: enderecoParseado.numero,
+            complemento: enderecoParseado.complemento,
+            bairro: enderecoParseado.bairro,
+            cidade: enderecoParseado.cidade,
             estado: enderecoParseado.estado,
-            horario_abertura: atual.horario_abertura || '',
-            horario_fechamento: atual.horario_fechamento || '',
+            horario_abertura: (atual.horario_abertura || '').replace(/:\d{2}$/, ''),
+            horario_fechamento: (atual.horario_fechamento || '').replace(/:\d{2}$/, ''),
             logo_url: atual.logo_url || '',
           })
+
+          if (Array.isArray(atual.horarios_semana) && atual.horarios_semana.length === 7) {
+            setHorarios(
+              atual.horarios_semana.map((dia: any) => ({
+                key: String(dia?.key || ''),
+                label: String(dia?.label || ''),
+                fechado: Boolean(dia?.fechado),
+                abertura: String(dia?.abertura || ''),
+                fechamento: String(dia?.fechamento || ''),
+              }))
+            )
+          }
+
+          try {
+            const respostaServicos = await ApiService.listServicos(atual.id)
+            const listaServicos = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
+            setServicos(
+              listaServicos.map((servico: any) => {
+                const nomeNormalizado = String(servico?.nome || '').toLowerCase()
+                const imagem = nomeNormalizado.includes('sobrancelha')
+                  ? '/service-icons/cabelo-sobrancelha.png'
+                  : '/service-icons/cabelo.png'
+
+                return {
+                  id: String(servico.id),
+                  nome: String(servico.nome || ''),
+                  preco: Number(servico.preco || 0),
+                  duracao_minutos: Number(servico.duracao_minutos || 30),
+                  imagem,
+                }
+              })
+            )
+          } catch {
+            setServicos([])
+          }
         }
       } catch {
         setMessage('Nao foi possivel carregar os dados atuais da barbearia.')
@@ -173,22 +263,6 @@ export default function ConfigurarPage() {
 
     carregarBarbearia()
   }, [user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-    const storageKey = `barbearia_horarios_${barbeariaId || user.id}`
-    const salvo = localStorage.getItem(storageKey)
-    if (!salvo) return
-
-    try {
-      const parsed = JSON.parse(salvo)
-      if (Array.isArray(parsed) && parsed.length === 7) {
-        setHorarios(parsed)
-      }
-    } catch {
-      // ignore parse error
-    }
-  }, [barbeariaId, user?.id])
 
   useEffect(() => {
     if (!user?.id) return
@@ -301,6 +375,64 @@ export default function ConfigurarPage() {
     setAvaliacoes((prev) => prev.filter((item) => item.id !== id))
   }
 
+  const adicionarServico = async () => {
+    const precoNumero = Number(String(novoServico.preco).replace(',', '.'))
+    const duracaoNumero = Number(novoServico.duracao)
+
+    if (Number.isNaN(precoNumero) || precoNumero <= 0) {
+      setMessage('Defina o valor do servico (ex: 45).')
+      return
+    }
+
+    if (Number.isNaN(duracaoNumero) || duracaoNumero <= 0) {
+      setMessage('Defina a duracao em minutos.')
+      return
+    }
+
+    if (!barbeariaId) {
+      setMessage('Salve os dados da barbearia antes de cadastrar servicos.')
+      return
+    }
+
+    try {
+      const modelo = SERVICO_POR_TIPO[novoServico.tipo]
+      const resposta = await ApiService.createServico(barbeariaId, {
+        nome: modelo.nome,
+        descricao: `Servico ${modelo.nome}`,
+        preco: precoNumero,
+        duracao_minutos: duracaoNumero,
+      })
+
+      const criado = resposta?.servico
+      if (criado) {
+        setServicos((prev) => [
+          ...prev,
+          {
+            id: String(criado.id),
+            nome: String(criado.nome || modelo.nome),
+            preco: Number(criado.preco || precoNumero),
+            duracao_minutos: Number(criado.duracao_minutos || duracaoNumero),
+            imagem: modelo.imagem,
+          },
+        ])
+      }
+
+      setNovoServico({ tipo: 'cabelo', preco: '', duracao: '40' })
+      setMessage('Servico cadastrado com sucesso.')
+    } catch (error: any) {
+      setMessage(error?.message || 'Nao foi possivel cadastrar o servico.')
+    }
+  }
+
+  const removerServico = async (id: string) => {
+    try {
+      await ApiService.deleteServico(id)
+      setServicos((prev) => prev.filter((servico) => servico.id !== id))
+    } catch {
+      setMessage('Nao foi possivel remover o servico.')
+    }
+  }
+
   const buscarCep = async () => {
     const cepNumerico = form.cep.replace(/\D/g, '')
     if (cepNumerico.length !== 8) {
@@ -407,6 +539,7 @@ export default function ConfigurarPage() {
         usuario_id: user?.id,
         logo_url: form.logo_url || null,
         whatsapp_link: form.whatsapp || null,
+        horarios_semana: horarios,
       }
 
       if (!form.nome.trim()) {
@@ -417,23 +550,26 @@ export default function ConfigurarPage() {
         throw new Error('Usuario invalido para salvar barbearia.')
       }
 
-      if (barbeariaId) {
-        await ApiService.updateBarbearia(barbeariaId, payload)
+      let finalBarbeariaId: string | number | null = barbeariaId
+
+      if (finalBarbeariaId) {
+        await ApiService.updateBarbearia(finalBarbeariaId, payload)
       } else {
         const criado = await ApiService.createBarbearia(payload)
         const novoId = criado?.barbearia?.id
         if (novoId) {
           setBarbeariaId(novoId)
+          finalBarbeariaId = novoId
         }
       }
 
-      const storageKey = `barbearia_horarios_${barbeariaId || user.id}`
+      const storageKey = `barbearia_horarios_${finalBarbeariaId || user.id}`
       localStorage.setItem(storageKey, JSON.stringify(horarios))
-      const amenidadesKey = `barbearia_amenidades_${barbeariaId || user.id}`
+      const amenidadesKey = `barbearia_amenidades_${finalBarbeariaId || user.id}`
       localStorage.setItem(amenidadesKey, JSON.stringify(amenidadesSelecionadas))
-      const profissionaisKey = `barbearia_profissionais_${barbeariaId || user.id}`
+      const profissionaisKey = `barbearia_profissionais_${finalBarbeariaId || user.id}`
       localStorage.setItem(profissionaisKey, JSON.stringify(profissionais))
-      const avaliacoesKey = `barbearia_avaliacoes_${barbeariaId || user.id}`
+      const avaliacoesKey = `barbearia_avaliacoes_${finalBarbeariaId || user.id}`
       localStorage.setItem(avaliacoesKey, JSON.stringify(avaliacoes))
 
       setMessage('Salvo com sucesso!')
@@ -700,6 +836,96 @@ export default function ConfigurarPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
+              <h2 className="font-medium">Servicos</h2>
+              <p className="text-sm text-zinc-400">Clique em novo servico para definir tipo, imagem e valor do corte.</p>
+
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+                <p className="text-sm font-medium text-white">Novo servico</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Tipo</label>
+                    <select
+                      value={novoServico.tipo}
+                      onChange={(e) => setNovoServico((prev) => ({ ...prev, tipo: e.target.value as TipoServico }))}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                    >
+                      {OPCOES_SERVICO.map((opcao) => (
+                        <option key={opcao.value} value={opcao.value}>{opcao.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Valor (cliente define)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={novoServico.preco}
+                      onChange={(e) => setNovoServico((prev) => ({ ...prev, preco: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                      placeholder="Ex: 45"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">Duracao (min)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      step="5"
+                      value={novoServico.duracao}
+                      onChange={(e) => setNovoServico((prev) => ({ ...prev, duracao: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <img
+                    src={SERVICO_POR_TIPO[novoServico.tipo].imagem}
+                    alt={SERVICO_POR_TIPO[novoServico.tipo].nome}
+                    className="w-14 h-14 rounded-lg object-cover border border-zinc-700"
+                  />
+                  <div className="text-sm text-zinc-300">
+                    <p>{SERVICO_POR_TIPO[novoServico.tipo].nome}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={adicionarServico}
+                  className="px-4 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                >
+                  Novo servico
+                </button>
+              </div>
+
+              {servicos.length > 0 ? (
+                <div className="space-y-2">
+                  {servicos.map((servico) => (
+                    <div key={servico.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <img src={servico.imagem} alt={servico.nome} className="w-12 h-12 rounded-lg object-cover border border-zinc-700" />
+                        <div>
+                          <p className="font-medium text-white">{servico.nome}</p>
+                          <p className="text-xs text-zinc-400">{servico.duracao_minutos} min</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold">R$ {servico.preco.toFixed(2)}</p>
+                        <button type="button" onClick={() => removerServico(servico.id)} className="text-xs text-red-400 hover:text-red-300">Remover</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-400">Nenhum servico cadastrado ainda.</p>
+              )}
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
