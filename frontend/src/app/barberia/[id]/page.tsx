@@ -8,40 +8,47 @@ import { MapPin, Phone, Clock, Star, Calendar, Check, ArrowLeft } from 'lucide-r
 
 type TabKey = 'services' | 'professionals' | 'reviews'
 
+type Service = {
+  id: string
+  name: string
+  price: number
+  durationMinutes: number
+}
+
+type Professional = {
+  id: string
+  name: string
+  role: string
+  experience: string
+}
+
+type Review = {
+  id: string
+  author: string
+  rating: number
+  comment: string
+  date: string
+}
+
 const defaultShop = {
   id: '1',
   name: 'Barbearia',
-  rating: 4.8,
-  reviewsCount: 48,
+  rating: 0,
+  reviewsCount: 0,
   bannerImage: 'https://images.unsplash.com/photo-1622287162716-f311baa1a2b8?auto=format&fit=crop&w=1600&q=80',
   logoImage: '/logo.jpg',
-  tagline: 'Corte moderno e barba profissional.',
-  description: 'Especialistas em corte masculino, barba e acabamento. Ambiente confortável, atendimento personalizado e foco total na sua experiência.',
-  address: 'Rua das Barbas, 123 - São Paulo, SP',
-  district: 'Centro',
-  city: 'São Paulo',
-  phone: '(11) 99999-9999',
-  whatsapp: '5511999999999',
-  openingHours: [
-    'Segunda a Sexta: 09:00 - 20:00',
-    'Sábado: 09:00 - 18:00',
-    'Domingo: Fechado',
-  ],
-  amenities: ['Wi-Fi', 'Ar-condicionado', 'Acessibilidade', 'Pagamento por cartão'],
-  services: [
-    { id: 's1', name: 'Corte Masculino', price: 55, durationMinutes: 40 },
-    { id: 's2', name: 'Barba Completa', price: 45, durationMinutes: 30 },
-    { id: 's3', name: 'Corte + Barba', price: 95, durationMinutes: 70 },
-    { id: 's4', name: 'Pezinho e Acabamento', price: 30, durationMinutes: 20 },
-  ],
-  professionals: [
-    { id: 'p1', name: 'João Silva', role: 'Barbeiro Senior', experience: '8 anos de experiência' },
-    { id: 'p2', name: 'Pedro Santos', role: 'Especialista em Fade', experience: '6 anos de experiência' },
-  ],
-  reviews: [
-    { id: 'r1', author: 'Thiago A.', rating: 5, comment: 'Atendimento impecável e corte exatamente como pedi.', date: '12/03/2026' },
-    { id: 'r2', author: 'Marcos V.', rating: 5, comment: 'Ambiente top, pontualidade e profissionais muito bons.', date: '08/03/2026' },
-  ],
+  tagline: 'Conheca os servicos e profissionais desta barbearia.',
+  description: 'Acompanhe as informacoes atualizadas da barbearia.',
+  address: 'Endereco nao informado',
+  district: 'Regiao',
+  city: 'Cidade',
+  phone: '',
+  whatsapp: '',
+  openingHours: [] as string[],
+  amenities: [] as string[],
+  services: [] as Service[],
+  professionals: [] as Professional[],
+  reviews: [] as Review[],
 }
 
 const extrairCidadeUF = (endereco: string) => {
@@ -69,6 +76,17 @@ function ratingStars(rating: number) {
   return '★'.repeat(full) + '☆'.repeat(5 - full)
 }
 
+const carregarJsonStorage = <T,>(key: string, fallback: T): T => {
+  const raw = localStorage.getItem(key)
+  if (!raw) return fallback
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
 export default function BarberShopDetailPage({ params }: { params: { id: string } }) {
   const { isAuthenticated } = useAuth()
   const [activeTab, setActiveTab] = useState<TabKey>('services')
@@ -93,7 +111,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             address: barbearia.endereco || prev.address,
             district,
             city,
-            phone: barbearia.telefone || prev.phone,
+            phone: barbearia.telefone || '',
             whatsapp: (barbearia.whatsapp_link || '').replace(/\D/g, '') || prev.whatsapp,
             logoImage: barbearia.logo_url || prev.logoImage,
             openingHours: [
@@ -103,23 +121,69 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
           }))
         }
 
+        const horariosSalvos = carregarJsonStorage<any[]>(`barbearia_horarios_${params.id}`, [])
+        if (Array.isArray(horariosSalvos) && horariosSalvos.length > 0) {
+          const horariosFormatados = horariosSalvos.map((dia) => {
+            if (dia?.fechado) return `${dia.label}: Fechado`
+            return `${dia.label}: ${dia.abertura} - ${dia.fechamento}`
+          })
+
+          setShop((prev) => ({ ...prev, openingHours: horariosFormatados }))
+        }
+
+        const amenidadesSalvas = carregarJsonStorage<string[]>(`barbearia_amenidades_${params.id}`, [])
+        if (Array.isArray(amenidadesSalvas) && amenidadesSalvas.length > 0) {
+          setShop((prev) => ({ ...prev, amenities: amenidadesSalvas }))
+        }
+
+        const profissionaisSalvos = carregarJsonStorage<any[]>(`barbearia_profissionais_${params.id}`, [])
+        if (Array.isArray(profissionaisSalvos) && profissionaisSalvos.length > 0) {
+          setShop((prev) => ({
+            ...prev,
+            professionals: profissionaisSalvos.map((p) => ({
+              id: String(p.id),
+              name: p.nome,
+              role: p.cargo,
+              experience: p.experiencia,
+            })),
+          }))
+        }
+
+        const avaliacoesSalvas = carregarJsonStorage<any[]>(`barbearia_avaliacoes_${params.id}`, [])
+        if (Array.isArray(avaliacoesSalvas) && avaliacoesSalvas.length > 0) {
+          const reviews = avaliacoesSalvas.map((r) => ({
+            id: String(r.id),
+            author: r.autor,
+            rating: Number(r.nota || 0),
+            comment: r.comentario,
+            date: r.data,
+          }))
+
+          const media = reviews.reduce((acc, item) => acc + item.rating, 0) / reviews.length
+
+          setShop((prev) => ({
+            ...prev,
+            reviews,
+            reviewsCount: reviews.length,
+            rating: Number.isFinite(media) ? media : 0,
+          }))
+        }
+
         try {
           const respostaServicos = await ApiService.listServicos(params.id)
           const listaServicos = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
 
-          if (listaServicos.length > 0) {
-            setShop((prev) => ({
-              ...prev,
-              services: listaServicos.map((servico: any) => ({
-                id: String(servico.id),
-                name: servico.nome,
-                price: Number(servico.preco || 0),
-                durationMinutes: Number(servico.duracao_minutos || 30),
-              })),
-            }))
-          }
+          setShop((prev) => ({
+            ...prev,
+            services: listaServicos.map((servico: any) => ({
+              id: String(servico.id),
+              name: servico.nome,
+              price: Number(servico.preco || 0),
+              durationMinutes: Number(servico.duracao_minutos || 30),
+            })),
+          }))
         } catch {
-          // Mantem fallback local quando nao ha servicos na API
+          setShop((prev) => ({ ...prev, services: [] }))
         }
       } finally {
         setLoading(false)
@@ -131,6 +195,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
   const whatsappLink = useMemo(() => {
     const message = encodeURIComponent(`Olá! Quero agendar um horário na ${shop.name}.`)
+    if (!shop.whatsapp) return '#'
     return `https://wa.me/${shop.whatsapp}?text=${message}`
   }, [shop.name, shop.whatsapp])
 
@@ -177,7 +242,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
               </div>
               <div className="rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm">
                 <p className="font-medium text-white">{shop.rating.toFixed(1)} <span className="text-zinc-400">/ 5.0</span></p>
-                <p className="text-amber-400">{ratingStars(shop.rating)}</p>
+                <p className="text-amber-400">{shop.rating > 0 ? ratingStars(shop.rating) : 'Sem notas'}</p>
                 <p className="text-zinc-400">{shop.reviewsCount} avaliações</p>
               </div>
             </div>
@@ -204,6 +269,11 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
             {activeTab === 'services' && (
               <div className="space-y-3">
+                {shop.services.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-black/50 p-4 text-sm text-zinc-400">
+                    Nenhum servico cadastrado ainda.
+                  </div>
+                )}
                 {shop.services.map((service) => (
                   <div key={service.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/50 p-4">
                     <div>
@@ -218,6 +288,11 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
             {activeTab === 'professionals' && (
               <div className="space-y-3">
+                {shop.professionals.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-black/50 p-4 text-sm text-zinc-400">
+                    Nenhum profissional cadastrado ainda.
+                  </div>
+                )}
                 {shop.professionals.map((professional) => (
                   <div key={professional.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
                     <p className="font-medium text-white">{professional.name}</p>
@@ -230,6 +305,11 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
             {activeTab === 'reviews' && (
               <div className="space-y-3">
+                {shop.reviews.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-black/50 p-4 text-sm text-zinc-400">
+                    Nenhuma avaliacao cadastrada ainda.
+                  </div>
+                )}
                 {shop.reviews.map((review) => (
                   <div key={review.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -260,13 +340,17 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
           <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
             <h3 className="text-lg font-semibold">Comodidades</h3>
-            <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-              {shop.amenities.map((amenity) => (
-                <li key={amenity} className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" />{amenity}
-                </li>
-              ))}
-            </ul>
+            {shop.amenities.length === 0 ? (
+              <p className="mt-3 text-sm text-zinc-400">Sem comodidades cadastradas.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+                {shop.amenities.map((amenity) => (
+                  <li key={amenity} className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />{amenity}
+                  </li>
+                ))}
+              </ul>
+            )}
           </article>
 
           <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
@@ -274,11 +358,15 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             <p className="mt-3 text-sm text-zinc-300">{shop.address}</p>
             <p className="mt-1 text-xs text-zinc-500">{shop.district} - {shop.city}</p>
             <h4 className="mt-5 text-sm font-semibold text-white">Contato</h4>
-            <p className="mt-2 text-sm text-zinc-300">{shop.phone}</p>
+            <p className="mt-2 text-sm text-zinc-300">{shop.phone || 'Nao informado'}</p>
             <h4 className="mt-5 text-sm font-semibold text-white">Horários</h4>
-            <ul className="mt-2 space-y-1 text-sm text-zinc-300">
-              {shop.openingHours.map((hour) => (<li key={hour}>{hour}</li>))}
-            </ul>
+            {shop.openingHours.length === 0 ? (
+              <p className="mt-2 text-sm text-zinc-400">Horarios nao informados.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm text-zinc-300">
+                {shop.openingHours.map((hour) => (<li key={hour}>{hour}</li>))}
+              </ul>
+            )}
           </article>
         </aside>
       </div>

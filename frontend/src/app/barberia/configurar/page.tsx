@@ -34,6 +34,30 @@ type HorarioDia = {
   fechamento: string
 }
 
+type Profissional = {
+  id: string
+  nome: string
+  cargo: string
+  experiencia: string
+}
+
+type Avaliacao = {
+  id: string
+  autor: string
+  nota: number
+  comentario: string
+  data: string
+}
+
+const AMENIDADES_PADRAO = [
+  'Wi-Fi',
+  'Ar-condicionado',
+  'Acessibilidade',
+  'Pagamento por cartao',
+  'Cafe',
+  'Estacionamento',
+]
+
 const DIAS_SEMANA: Array<{ key: string; label: string }> = [
   { key: 'segunda', label: 'Segunda-feira' },
   { key: 'terca', label: 'Terca-feira' },
@@ -86,6 +110,12 @@ export default function ConfigurarPage() {
   const [message, setMessage] = useState('')
   const [barbeariaId, setBarbeariaId] = useState<string | number | null>(null)
   const [horarios, setHorarios] = useState<HorarioDia[]>(criarHorariosPadrao())
+  const [amenidadesSelecionadas, setAmenidadesSelecionadas] = useState<string[]>([])
+  const [amenidadeCustom, setAmenidadeCustom] = useState('')
+  const [profissionais, setProfissionais] = useState<Profissional[]>([])
+  const [novoProfissional, setNovoProfissional] = useState({ nome: '', cargo: '', experiencia: '' })
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
+  const [novaAvaliacao, setNovaAvaliacao] = useState({ autor: '', nota: '5', comentario: '' })
 
   const [form, setForm] = useState<FormBarbearia>({
     nome: '',
@@ -159,6 +189,117 @@ export default function ConfigurarPage() {
       // ignore parse error
     }
   }, [barbeariaId, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const storageKey = `barbearia_profissionais_${barbeariaId || user.id}`
+    const salvo = localStorage.getItem(storageKey)
+    if (!salvo) return
+
+    try {
+      const parsed = JSON.parse(salvo)
+      if (Array.isArray(parsed)) {
+        setProfissionais(parsed.filter((item) => item?.nome && item?.cargo))
+      }
+    } catch {
+      // ignore parse error
+    }
+  }, [barbeariaId, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const storageKey = `barbearia_avaliacoes_${barbeariaId || user.id}`
+    const salvo = localStorage.getItem(storageKey)
+    if (!salvo) return
+
+    try {
+      const parsed = JSON.parse(salvo)
+      if (Array.isArray(parsed)) {
+        setAvaliacoes(parsed.filter((item) => item?.autor && item?.comentario))
+      }
+    } catch {
+      // ignore parse error
+    }
+  }, [barbeariaId, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const storageKey = `barbearia_amenidades_${barbeariaId || user.id}`
+    const salvo = localStorage.getItem(storageKey)
+    if (!salvo) return
+
+    try {
+      const parsed = JSON.parse(salvo)
+      if (Array.isArray(parsed)) {
+        setAmenidadesSelecionadas(parsed.filter((item) => typeof item === 'string'))
+      }
+    } catch {
+      // ignore parse error
+    }
+  }, [barbeariaId, user?.id])
+
+  const alternarAmenidade = (amenidade: string) => {
+    setAmenidadesSelecionadas((prev) => {
+      if (prev.includes(amenidade)) {
+        return prev.filter((item) => item !== amenidade)
+      }
+      return [...prev, amenidade]
+    })
+  }
+
+  const adicionarAmenidadeCustom = () => {
+    const valor = amenidadeCustom.trim()
+    if (!valor) return
+
+    if (!amenidadesSelecionadas.includes(valor)) {
+      setAmenidadesSelecionadas((prev) => [...prev, valor])
+    }
+
+    setAmenidadeCustom('')
+  }
+
+  const adicionarProfissional = () => {
+    if (!novoProfissional.nome.trim() || !novoProfissional.cargo.trim()) return
+
+    setProfissionais((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}`,
+        nome: novoProfissional.nome.trim(),
+        cargo: novoProfissional.cargo.trim(),
+        experiencia: novoProfissional.experiencia.trim() || 'Experiencia nao informada',
+      },
+    ])
+
+    setNovoProfissional({ nome: '', cargo: '', experiencia: '' })
+  }
+
+  const removerProfissional = (id: string) => {
+    setProfissionais((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const adicionarAvaliacao = () => {
+    if (!novaAvaliacao.autor.trim() || !novaAvaliacao.comentario.trim()) return
+
+    const nota = Number(novaAvaliacao.nota)
+
+    setAvaliacoes((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}`,
+        autor: novaAvaliacao.autor.trim(),
+        nota: Number.isNaN(nota) ? 5 : Math.min(5, Math.max(1, nota)),
+        comentario: novaAvaliacao.comentario.trim(),
+        data: new Date().toLocaleDateString('pt-BR'),
+      },
+    ])
+
+    setNovaAvaliacao({ autor: '', nota: '5', comentario: '' })
+  }
+
+  const removerAvaliacao = (id: string) => {
+    setAvaliacoes((prev) => prev.filter((item) => item.id !== id))
+  }
 
   const buscarCep = async () => {
     const cepNumerico = form.cep.replace(/\D/g, '')
@@ -242,6 +383,10 @@ export default function ConfigurarPage() {
         throw new Error(erroHorarios)
       }
 
+      if (amenidadesSelecionadas.length === 0) {
+        throw new Error('Selecione ao menos uma comodidade.')
+      }
+
       const diasAbertos = horarios.filter((dia) => !dia.fechado)
       const primeiraAbertura = diasAbertos
         .map((dia) => dia.abertura)
@@ -284,6 +429,12 @@ export default function ConfigurarPage() {
 
       const storageKey = `barbearia_horarios_${barbeariaId || user.id}`
       localStorage.setItem(storageKey, JSON.stringify(horarios))
+      const amenidadesKey = `barbearia_amenidades_${barbeariaId || user.id}`
+      localStorage.setItem(amenidadesKey, JSON.stringify(amenidadesSelecionadas))
+      const profissionaisKey = `barbearia_profissionais_${barbeariaId || user.id}`
+      localStorage.setItem(profissionaisKey, JSON.stringify(profissionais))
+      const avaliacoesKey = `barbearia_avaliacoes_${barbeariaId || user.id}`
+      localStorage.setItem(avaliacoesKey, JSON.stringify(avaliacoes))
 
       setMessage('Salvo com sucesso!')
     } catch (error: any) {
@@ -305,7 +456,7 @@ export default function ConfigurarPage() {
     form.cep && form.rua && form.numero && form.bairro && form.cidade && form.estado
   )
   const qualidadeHorarios = horarios.some((dia) => !dia.fechado)
-  const qualidadeCadastro = qualidadeEndereco && qualidadeHorarios && Boolean(form.nome.trim())
+  const qualidadeCadastro = qualidadeEndereco && qualidadeHorarios && amenidadesSelecionadas.length > 0 && Boolean(form.nome.trim())
 
   if (loadingInicial) {
     return (
@@ -549,6 +700,170 @@ export default function ConfigurarPage() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
+              <h2 className="font-medium">Comodidades</h2>
+              <p className="text-sm text-zinc-400">Selecione as comodidades que seu espaco oferece.</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {AMENIDADES_PADRAO.map((amenidade) => (
+                  <label key={amenidade} className="inline-flex items-center gap-2 text-sm text-zinc-200 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={amenidadesSelecionadas.includes(amenidade)}
+                      onChange={() => alternarAmenidade(amenidade)}
+                    />
+                    {amenidade}
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={amenidadeCustom}
+                  onChange={(e) => setAmenidadeCustom(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      adicionarAmenidadeCustom()
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  placeholder="Adicionar comodidade personalizada"
+                />
+                <button
+                  type="button"
+                  onClick={adicionarAmenidadeCustom}
+                  className="px-4 py-3 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                >
+                  Adicionar
+                </button>
+              </div>
+
+              {amenidadesSelecionadas.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {amenidadesSelecionadas.map((amenidade) => (
+                    <button
+                      key={amenidade}
+                      type="button"
+                      onClick={() => alternarAmenidade(amenidade)}
+                      className="text-xs rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-zinc-300 hover:text-white"
+                    >
+                      {amenidade} x
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
+              <h2 className="font-medium">Profissionais</h2>
+              <p className="text-sm text-zinc-400">Adicione os barbeiros que atendem na barbearia.</p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  value={novoProfissional.nome}
+                  onChange={(e) => setNovoProfissional((prev) => ({ ...prev, nome: e.target.value }))}
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  placeholder="Nome"
+                />
+                <input
+                  type="text"
+                  value={novoProfissional.cargo}
+                  onChange={(e) => setNovoProfissional((prev) => ({ ...prev, cargo: e.target.value }))}
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  placeholder="Cargo"
+                />
+                <input
+                  type="text"
+                  value={novoProfissional.experiencia}
+                  onChange={(e) => setNovoProfissional((prev) => ({ ...prev, experiencia: e.target.value }))}
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  placeholder="Ex: 6 anos"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={adicionarProfissional}
+                className="px-4 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+              >
+                Adicionar profissional
+              </button>
+
+              {profissionais.length > 0 && (
+                <div className="space-y-2">
+                  {profissionais.map((profissional) => (
+                    <div key={profissional.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{profissional.nome}</p>
+                        <p className="text-sm text-zinc-300">{profissional.cargo}</p>
+                        <p className="text-xs text-zinc-500">{profissional.experiencia}</p>
+                      </div>
+                      <button type="button" onClick={() => removerProfissional(profissional.id)} className="text-xs text-red-400 hover:text-red-300">Remover</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
+              <h2 className="font-medium">Avaliacoes</h2>
+              <p className="text-sm text-zinc-400">Cadastre depoimentos para exibir na pagina publica.</p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  value={novaAvaliacao.autor}
+                  onChange={(e) => setNovaAvaliacao((prev) => ({ ...prev, autor: e.target.value }))}
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  placeholder="Nome do cliente"
+                />
+                <select
+                  value={novaAvaliacao.nota}
+                  onChange={(e) => setNovaAvaliacao((prev) => ({ ...prev, nota: e.target.value }))}
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                >
+                  <option value="5">5 estrelas</option>
+                  <option value="4">4 estrelas</option>
+                  <option value="3">3 estrelas</option>
+                  <option value="2">2 estrelas</option>
+                  <option value="1">1 estrela</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={adicionarAvaliacao}
+                  className="px-4 py-3 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                >
+                  Adicionar avaliacao
+                </button>
+              </div>
+
+              <textarea
+                value={novaAvaliacao.comentario}
+                onChange={(e) => setNovaAvaliacao((prev) => ({ ...prev, comentario: e.target.value }))}
+                className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                placeholder="Comentario"
+                rows={3}
+              />
+
+              {avaliacoes.length > 0 && (
+                <div className="space-y-2">
+                  {avaliacoes.map((avaliacao) => (
+                    <div key={avaliacao.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{avaliacao.autor} - {'★'.repeat(avaliacao.nota)}</p>
+                        <p className="text-xs text-zinc-500">{avaliacao.data}</p>
+                        <p className="text-sm text-zinc-300 mt-1">{avaliacao.comentario}</p>
+                      </div>
+                      <button type="button" onClick={() => removerAvaliacao(avaliacao.id)} className="text-xs text-red-400 hover:text-red-300">Remover</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button
