@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import ApiService from '@/services/api'
 import { 
   Scissors, 
   Calendar, 
@@ -15,14 +17,70 @@ import {
 } from 'lucide-react'
 
 export default function Home() {
+  const [metricas, setMetricas] = useState({
+    totalBarbearias: 0,
+    totalClientes: 0,
+    notaMedia: 0,
+    carregando: true,
+  })
+
+  useEffect(() => {
+    const carregarMetricas = async () => {
+      try {
+        const [resBarbearias, resAgendamentos] = await Promise.allSettled([
+          ApiService.listBarbearias(),
+          ApiService.listAgendamentos(),
+        ])
+
+        const listaBarbearias =
+          resBarbearias.status === 'fulfilled' && Array.isArray(resBarbearias.value?.barbearias)
+            ? resBarbearias.value.barbearias
+            : []
+
+        const listaAgendamentos =
+          resAgendamentos.status === 'fulfilled' && Array.isArray(resAgendamentos.value?.agendamentos)
+            ? resAgendamentos.value.agendamentos
+            : []
+
+        const notasValidas = listaBarbearias
+          .map((item: any) => Number(item?.nota_media ?? item?.nota ?? 0))
+          .filter((nota: number) => Number.isFinite(nota) && nota > 0)
+
+        const notaMedia = notasValidas.length
+          ? notasValidas.reduce((soma: number, nota: number) => soma + nota, 0) / notasValidas.length
+          : 0
+
+        const clientesUnicos = new Set(
+          listaAgendamentos
+            .map((item: any) => item?.cliente_id ?? item?.cliente_nome ?? null)
+            .filter((valor: any) => valor !== null && valor !== undefined && String(valor).trim() !== '')
+            .map((valor: any) => String(valor))
+        )
+
+        setMetricas({
+          totalBarbearias: listaBarbearias.length,
+          totalClientes: clientesUnicos.size,
+          notaMedia,
+          carregando: false,
+        })
+      } catch {
+        setMetricas((prev) => ({ ...prev, carregando: false }))
+      }
+    }
+
+    carregarMetricas()
+  }, [])
+
+  const formatarInteiro = (valor: number) => new Intl.NumberFormat('pt-BR').format(valor)
+
   return (
     <main className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
-            <span className="text-lg font-bold text-white">Meu Barbeiro</span>
+            <img src="/logo.jpg" alt="Sou Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
+            <span className="text-lg font-bold text-white">Sou Barbeiro</span>
           </Link>
           <nav className="flex gap-6">
             <Link href="/" className="text-sm font-medium text-zinc-300 hover:text-white transition">
@@ -73,15 +131,15 @@ export default function Home() {
       <section className="py-12 px-4 border-y border-white/10">
         <div className="max-w-4xl mx-auto grid grid-cols-3 gap-8 text-center">
           <div>
-            <p className="text-3xl font-bold text-white">500+</p>
+            <p className="text-3xl font-bold text-white">{metricas.carregando ? '...' : formatarInteiro(metricas.totalBarbearias)}</p>
             <p className="text-zinc-500 text-sm">Barbearias</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">10k+</p>
+            <p className="text-3xl font-bold text-white">{metricas.carregando ? '...' : formatarInteiro(metricas.totalClientes)}</p>
             <p className="text-zinc-500 text-sm">Clientes</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">4.8</p>
+            <p className="text-3xl font-bold text-white">{metricas.carregando ? '...' : metricas.notaMedia > 0 ? metricas.notaMedia.toFixed(1) : '-'}</p>
             <p className="text-zinc-500 text-sm">Nota Média</p>
           </div>
         </div>
@@ -130,7 +188,7 @@ export default function Home() {
       {/* Diferenciais */}
       <section className="py-20 px-4 bg-zinc-900/30">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-16">Por que escolher o Meu Barbeiro?</h2>
+          <h2 className="text-3xl font-bold text-center mb-16">Por que escolher o Sou Barbeiro?</h2>
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="p-6 rounded-xl bg-black border border-white/5">
@@ -245,11 +303,11 @@ export default function Home() {
       <footer className="py-12 px-4 border-t border-white/10">
         <div className="max-w-6xl mx-auto text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border border-white" />
-            <span className="font-bold">Meu Barbeiro</span>
+            <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border border-white" />
+            <span className="font-bold">Sou Barbeiro</span>
           </div>
           <p className="text-zinc-500 text-sm">
-            © 2026 Meu Barbeiro. Uma nova experiência para uma tradição antiga.
+            © 2026 Sou Barbeiro. Uma nova experiência para uma tradição antiga.
           </p>
         </div>
       </footer>
