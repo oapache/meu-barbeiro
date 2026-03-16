@@ -155,26 +155,41 @@ export default function BarbeariaDashboard() {
   return (
     <main className="min-h-screen bg-black text-white">
       {/* Header */}
-      <header className="bg-zinc-900 border-b border-zinc-800 px-4 py-4">
-        <div className="max-w-6xl mx-auto flex justify-between items-center gap-4">
-          <div>
-            <h1 className="text-lg md:text-2xl font-bold">{barbearia?.nome || 'Minha Barbearia'}</h1>
-            <p className="text-xs text-zinc-400">Bem-vindo, {user?.nome || 'Barbeiro'}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/barberia/configurar" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-700 text-sm hover:bg-zinc-800">
-              <Settings className="w-4 h-4" />
-              Configurar
-            </Link>
-            <button onClick={handleLogout} className="text-sm text-zinc-400 hover:text-white">
-              Sair
-            </button>
+      <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex justify-between items-center gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link href="/" className="flex items-center gap-3">
+                <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+                <span className="text-lg font-bold">Meu Barbeiro</span>
+              </Link>
+              <div className="hidden md:block border-l border-zinc-700 pl-3 min-w-0">
+                <h1 className="text-base font-semibold truncate">{barbearia?.nome || 'Minha Barbearia'}</h1>
+                <p className="text-xs text-zinc-400">Bem-vindo, {user?.nome || 'Barbeiro'}</p>
+              </div>
+            </div>
+
+            <nav className="hidden md:flex items-center gap-5 text-sm">
+              <Link href="/" className="text-zinc-300 hover:text-white transition">Início</Link>
+              <Link href="/buscar" className="text-zinc-300 hover:text-white transition">Buscar</Link>
+              <Link href="/barbearia" className="text-white font-medium">Barbearia</Link>
+            </nav>
+
+            <div className="flex items-center gap-2">
+              <Link href="/barberia/configurar" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-700 text-sm hover:bg-zinc-800">
+                <Settings className="w-4 h-4" />
+                Configurar
+              </Link>
+              <button onClick={handleLogout} className="text-sm text-zinc-400 hover:text-white">
+                Sair
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Tabs */}
-      <div className="bg-zinc-900/60 border-b border-zinc-800">
+      <div className="bg-zinc-900/60 border-b border-zinc-800 pt-20">
         <div className="max-w-6xl mx-auto flex gap-2 px-4 py-2">
           <button
             onClick={() => setActiveTab('agenda')}
