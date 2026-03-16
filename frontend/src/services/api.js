@@ -83,11 +83,11 @@ class ApiService {
 
   // ============ SERVIÇOS ============
   static async listServicos(barbeariaId) {
-    return fetchWithAuth(`/barbearias/${barbeariaId}/servicos`);
+    return fetchWithAuth(`/servicos/${barbeariaId}/servicos`);
   }
 
   static async createServico(barbeariaId, data) {
-    return fetchWithAuth(`/barbearias/${barbeariaId}/servicos`, {
+    return fetchWithAuth(`/servicos/${barbeariaId}/servicos`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
