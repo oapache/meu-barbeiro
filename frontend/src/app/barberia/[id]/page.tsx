@@ -30,6 +30,14 @@ type Review = {
   date: string
 }
 
+type WeeklyScheduleItem = {
+  key: string
+  label: string
+  fechado: boolean
+  abertura: string
+  fechamento: string
+}
+
 const defaultShop = {
   id: '1',
   name: 'Barbearia',
@@ -76,6 +84,10 @@ function ratingStars(rating: number) {
   return '★'.repeat(full) + '☆'.repeat(5 - full)
 }
 
+const DAY_KEY_BY_INDEX = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
+
+const horarioCurto = (valor: string) => (valor || '').slice(0, 5)
+
 const initialsFromName = (name: string) => {
   const clean = name.trim()
   if (!clean) return 'MB'
@@ -109,6 +121,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
   const [shop, setShop] = useState(defaultShop)
   const [loading, setLoading] = useState(true)
   const [logoError, setLogoError] = useState(false)
+  const [weeklySchedule, setWeeklySchedule] = useState<WeeklyScheduleItem[]>([])
 
   useEffect(() => {
     const carregarBarbearia = async () => {
@@ -140,12 +153,15 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
         const horariosSalvos = carregarJsonStorage<any[]>(`barbearia_horarios_${params.id}`, [])
         if (Array.isArray(horariosSalvos) && horariosSalvos.length > 0) {
-          const horariosFormatados = horariosSalvos.map((dia) => {
-            if (dia?.fechado) return `${dia.label}: Fechado`
-            return `${dia.label}: ${dia.abertura} - ${dia.fechamento}`
-          })
+          const semanal = horariosSalvos.map((dia) => ({
+            key: String(dia?.key || ''),
+            label: String(dia?.label || ''),
+            fechado: Boolean(dia?.fechado),
+            abertura: String(dia?.abertura || ''),
+            fechamento: String(dia?.fechamento || ''),
+          }))
 
-          setShop((prev) => ({ ...prev, openingHours: horariosFormatados }))
+          setWeeklySchedule(semanal)
         }
 
         const amenidadesSalvas = carregarJsonStorage<string[]>(`barbearia_amenidades_${params.id}`, [])
@@ -400,7 +416,33 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             <h4 className="mt-5 text-sm font-semibold text-white">Contato</h4>
             <p className="mt-2 text-sm text-zinc-300">{shop.phone || 'Nao informado'}</p>
             <h4 className="mt-5 text-sm font-semibold text-white">Horários</h4>
-            {shop.openingHours.length === 0 ? (
+            {weeklySchedule.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {weeklySchedule.map((dia) => {
+                  const todayKey = DAY_KEY_BY_INDEX[new Date().getDay()]
+                  const isToday = dia.key === todayKey
+                  const statusColor = isToday ? (dia.fechado ? 'text-red-400' : 'text-green-400') : 'text-zinc-300'
+
+                  return (
+                    <div key={dia.key} className="rounded-lg border border-white/10 bg-black/50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={`text-sm font-medium ${statusColor}`}>
+                          {dia.label}
+                        </p>
+                        {isToday && (
+                          <span className={`text-xs font-semibold ${dia.fechado ? 'text-red-400' : 'text-green-400'}`}>
+                            HOJE
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-sm mt-1 ${dia.fechado ? 'text-red-400' : 'text-zinc-300'}`}>
+                        {dia.fechado ? 'Fechado' : `${horarioCurto(dia.abertura)} - ${horarioCurto(dia.fechamento)}`}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : shop.openingHours.length === 0 ? (
               <p className="mt-2 text-sm text-zinc-400">Horarios nao informados.</p>
             ) : (
               <ul className="mt-2 space-y-1 text-sm text-zinc-300">
