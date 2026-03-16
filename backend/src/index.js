@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const path = require('path');
 
 const config = require('./config');
 
@@ -21,6 +22,7 @@ const barbeariasRoutes = require('./routes/barbearias');
 const usuariosRoutes = require('./routes/usuarios');
 const servicosRoutes = require('./routes/servicos');
 const agendamentosRoutes = require('./routes/agendamentos');
+const uploadRoutes = require('./routes/upload');
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -30,12 +32,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // API Routes
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/barbearias', barbeariasRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/servicos', servicosRoutes);
 app.use('/api/agendamentos', agendamentosRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

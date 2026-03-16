@@ -143,6 +143,31 @@ class ApiService {
       body: JSON.stringify({ telefone, tipo, dados }),
     });
   }
+
+  // ============ UPLOAD ============
+  static async uploadImagem(file) {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_URL}/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Erro no upload' }));
+      throw new Error(error.error || 'Erro no upload');
+    }
+
+    return res.json();
+  }
 }
 
 export default ApiService;

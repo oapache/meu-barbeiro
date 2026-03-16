@@ -1,25 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const path = require('path');
-const fs = require('fs');
-
-const uploadDir = path.join(__dirname, '../../uploads');
-
-// Ensure upload directory exists
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const upload = require('../middleware/upload');
 
 /**
  * POST /api/upload
  * Upload de imagem
  */
-router.post('/', (req, res) => {
-  // Simple upload without multer for now
-  // In production, use multer or cloud storage (Cloudinary, S3)
-  res.json({ 
-    message: 'Upload endpoint configured',
-    url: '/uploads/placeholder.jpg'
+router.post('/', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Arquivo nao enviado' });
+  }
+
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const url = `${baseUrl}/uploads/${req.file.filename}`;
+
+  return res.status(201).json({
+    message: 'Upload realizado com sucesso',
+    url,
+    filename: req.file.filename,
   });
 });
 

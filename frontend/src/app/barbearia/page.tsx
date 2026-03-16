@@ -94,9 +94,10 @@ export default function BarbeariaDashboard() {
   })
   const [novoBarbeiro, setNovoBarbeiro] = useState({
     nome: '',
-    foto_url: '',
     descricao: '',
   })
+  const [fotoBarbeiroArquivo, setFotoBarbeiroArquivo] = useState<File | null>(null)
+  const [enviandoFotoBarbeiro, setEnviandoFotoBarbeiro] = useState(false)
   const [barbeirosInicializados, setBarbeirosInicializados] = useState(false)
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(true)
@@ -299,20 +300,39 @@ export default function BarbeariaDashboard() {
       return
     }
 
-    const descricao = novoBarbeiro.descricao.trim()
-    const novo: Barbeiro = {
-      id: `barbeiro-${Date.now()}`,
-      nome,
-      foto_url: novoBarbeiro.foto_url.trim(),
-      descricao,
-      cargo: descricao || 'Barbeiro',
-      experiencia: descricao || '',
+    const salvar = async () => {
+      const descricao = novoBarbeiro.descricao.trim()
+      let fotoUrl = ''
+
+      try {
+        if (fotoBarbeiroArquivo) {
+          setEnviandoFotoBarbeiro(true)
+          const respostaUpload = await ApiService.uploadImagem(fotoBarbeiroArquivo)
+          fotoUrl = String(respostaUpload?.url || '').trim()
+        }
+
+        const novo: Barbeiro = {
+          id: `barbeiro-${Date.now()}`,
+          nome,
+          foto_url: fotoUrl,
+          descricao,
+          cargo: descricao || 'Barbeiro',
+          experiencia: descricao || '',
+        }
+
+        setBarbeiros((prev) => [...prev, novo])
+        setNovoBarbeiro({ nome: '', descricao: '' })
+        setFotoBarbeiroArquivo(null)
+        setMostrarNovoBarbeiro(false)
+        setErro('')
+      } catch (error: any) {
+        setErro(error?.message || 'Nao foi possivel enviar a foto do barbeiro.')
+      } finally {
+        setEnviandoFotoBarbeiro(false)
+      }
     }
 
-    setBarbeiros((prev) => [...prev, novo])
-    setNovoBarbeiro({ nome: '', foto_url: '', descricao: '' })
-    setMostrarNovoBarbeiro(false)
-    setErro('')
+    salvar()
   }
 
   const removerBarbeiro = (id: string) => {
@@ -613,11 +633,11 @@ export default function BarbeariaDashboard() {
                     placeholder="Nome"
                   />
                   <input
-                    type="url"
-                    value={novoBarbeiro.foto_url}
-                    onChange={(e) => setNovoBarbeiro((prev) => ({ ...prev, foto_url: e.target.value }))}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setFotoBarbeiroArquivo(e.target.files?.[0] || null)}
                     className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
-                    placeholder="Foto (URL opcional)"
+                    placeholder="Foto (opcional)"
                   />
                   <input
                     type="text"
@@ -630,9 +650,10 @@ export default function BarbeariaDashboard() {
                 <div className="flex gap-2">
                   <button
                     onClick={adicionarBarbeiro}
+                    disabled={enviandoFotoBarbeiro}
                     className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium"
                   >
-                    Salvar barbeiro
+                    {enviandoFotoBarbeiro ? 'Enviando foto...' : 'Salvar barbeiro'}
                   </button>
                   <button
                     onClick={() => setMostrarNovoBarbeiro(false)}
