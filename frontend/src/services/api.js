@@ -59,6 +59,10 @@ class ApiService {
     return fetchWithAuth('/barbearias');
   }
 
+  static async getPublicStats() {
+    return fetchWithAuth('/barbearias/stats');
+  }
+
   static async getBarbearia(id) {
     return fetchWithAuth(`/barbearias/${id}`);
   }

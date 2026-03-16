@@ -36,20 +36,49 @@ async function listBarbearias(req, res) {
   }
 }
 
+async function getPublicStats(req, res) {
+  try {
+    const [barbeariasResult, clientesResult] = await Promise.all([
+      pool.query('SELECT COUNT(*)::int AS total FROM barbearias'),
+      pool.query("SELECT COUNT(*)::int AS total FROM usuarios WHERE tipo = 'cliente'"),
+    ]);
+
+    const totalBarbearias = Number(barbeariasResult.rows?.[0]?.total || 0);
+    const totalClientes = Number(clientesResult.rows?.[0]?.total || 0);
+
+    const notaResult = await pool.query(
+      'SELECT COALESCE(AVG(NULLIF(nota, 0)), 0)::numeric(10,2) AS media FROM barbearias'
+    );
+
+    const notaMedia = Number(notaResult.rows?.[0]?.media || 0);
+
+    res.json({
+      stats: {
+        total_barbearias: totalBarbearias,
+        total_clientes: totalClientes,
+        nota_media: notaMedia,
+      },
+    });
+  } catch (error) {
+    console.error('Erro:', error);
+    res.status(500).json({ error: 'Erro ao carregar estatisticas publicas' });
+  }
+}
+
 async function createBarbearia(req, res) {
   try {
-    const { nome, telefone, endereco, horario_abertura, horario_fechamento, usuario_id, logo_url } = req.body;
-    
+    const { nome, telefone, endereco, horario_abertura, horario_fechamento, usuario_id, logo_url, horarios_semana } = req.body;
+
     if (!nome || !usuario_id) {
       return res.status(400).json({ error: 'Nome e usuário são obrigatórios' });
     }
-    
+
     const result = await pool.query(
-      `INSERT INTO barbearias (nome, telefone, endereco, horario_abertura, horario_fechamento, usuario_id, logo_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [nome, telefone || '', endereco || '', horario_abertura || '09:00', horario_fechamento || '20:00', usuario_id, logo_url || null]
+      `INSERT INTO barbearias (nome, telefone, endereco, horario_abertura, horario_fechamento, usuario_id, logo_url, horarios_semana)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [nome, telefone || '', endereco || '', horario_abertura || '09:00', horario_fechamento || '20:00', usuario_id, logo_url || null, horarios_semana ? JSON.stringify(horarios_semana) : null]
     );
-    
+
     res.status(201).json({ barbearia: result.rows[0] });
   } catch (error) {
     console.error('Erro:', error);
@@ -76,13 +105,13 @@ async function getBarbearia(req, res) {
 async function updateBarbearia(req, res) {
   try {
     const { id } = req.params;
-    const { nome, telefone, endereco, horario_abertura, horario_fechamento, whatsapp_link, logo_url } = req.body;
-    
+    const { nome, telefone, endereco, horario_abertura, horario_fechamento, whatsapp_link, logo_url, horarios_semana } = req.body;
+
     const result = await pool.query(
-      `UPDATE barbearias SET nome=$1, telefone=$2, endereco=$3, horario_abertura=$4, 
-       horario_fechamento=$5, whatsapp_link=$6, logo_url=$7, updated_at=NOW() 
-       WHERE id=$8 RETURNING *`,
-      [nome, telefone, endereco, horario_abertura, horario_fechamento, whatsapp_link, logo_url, id]
+      `UPDATE barbearias SET nome=$1, telefone=$2, endereco=$3, horario_abertura=$4,
+       horario_fechamento=$5, whatsapp_link=$6, logo_url=$7, horarios_semana=$8, updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
+      [nome, telefone, endereco, horario_abertura, horario_fechamento, whatsapp_link, logo_url, horarios_semana ? JSON.stringify(horarios_semana) : null, id]
     );
     
     if (result.rows.length === 0) {
@@ -112,4 +141,4 @@ async function deleteBarbearia(req, res) {
   }
 }
 
-module.exports = { listBarbearias, createBarbearia, getBarbearia, updateBarbearia, deleteBarbearia };
+module.exports = { listBarbearias, getPublicStats, createBarbearia, getBarbearia, updateBarbearia, deleteBarbearia };

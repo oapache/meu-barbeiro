@@ -5,6 +5,9 @@ const barbeariaController = require('../controllers/barbearia');
 // GET /api/barbearias - Lista todas
 router.get('/', barbeariaController.listBarbearias);
 
+// GET /api/barbearias/stats - Estatisticas publicas
+router.get('/stats', barbeariaController.getPublicStats);
+
 // POST /api/barbearias - Cria nova
 router.post('/', barbeariaController.createBarbearia);
 

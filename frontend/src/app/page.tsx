@@ -27,40 +27,13 @@ export default function Home() {
   useEffect(() => {
     const carregarMetricas = async () => {
       try {
-        const [resBarbearias, resAgendamentos] = await Promise.allSettled([
-          ApiService.listBarbearias(),
-          ApiService.listAgendamentos(),
-        ])
-
-        const listaBarbearias =
-          resBarbearias.status === 'fulfilled' && Array.isArray(resBarbearias.value?.barbearias)
-            ? resBarbearias.value.barbearias
-            : []
-
-        const listaAgendamentos =
-          resAgendamentos.status === 'fulfilled' && Array.isArray(resAgendamentos.value?.agendamentos)
-            ? resAgendamentos.value.agendamentos
-            : []
-
-        const notasValidas = listaBarbearias
-          .map((item: any) => Number(item?.nota_media ?? item?.nota ?? 0))
-          .filter((nota: number) => Number.isFinite(nota) && nota > 0)
-
-        const notaMedia = notasValidas.length
-          ? notasValidas.reduce((soma: number, nota: number) => soma + nota, 0) / notasValidas.length
-          : 0
-
-        const clientesUnicos = new Set(
-          listaAgendamentos
-            .map((item: any) => item?.cliente_id ?? item?.cliente_nome ?? null)
-            .filter((valor: any) => valor !== null && valor !== undefined && String(valor).trim() !== '')
-            .map((valor: any) => String(valor))
-        )
+        const resposta = await ApiService.getPublicStats()
+        const stats = resposta?.stats || {}
 
         setMetricas({
-          totalBarbearias: listaBarbearias.length,
-          totalClientes: clientesUnicos.size,
-          notaMedia,
+          totalBarbearias: Number(stats.total_barbearias || 0),
+          totalClientes: Number(stats.total_clientes || 0),
+          notaMedia: Number(stats.nota_media || 0),
           carregando: false,
         })
       } catch {
