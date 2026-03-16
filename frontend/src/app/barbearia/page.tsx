@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
 import { listLocalAgendamentos } from '@/lib/agendamentos'
-import { Calendar, Users, Scissors, Plus, CheckCircle, XCircle, Clock, Settings, Store } from 'lucide-react'
+import { Calendar, Users, Scissors, Plus, CheckCircle, XCircle, Clock, Settings, Store, Trash2 } from 'lucide-react'
 
 type StatusAgenda = 'confirmado' | 'pendente' | 'cancelado'
 
@@ -23,6 +23,15 @@ type Servico = {
   nome: string
   preco: number
   duracao: number
+}
+
+type Barbeiro = {
+  id: string
+  nome: string
+  foto_url: string
+  descricao: string
+  cargo: string
+  experiencia: string
 }
 
 type AuthUser = {
@@ -55,6 +64,13 @@ const OPCOES_SERVICO_INLINE: TipoServicoInline[] = [
   'corte_feminino',
 ]
 
+const iniciaisNome = (nome: string) => {
+  const partes = String(nome || '').trim().split(' ').filter(Boolean)
+  if (partes.length === 0) return 'BB'
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase()
+  return `${partes[0][0] || ''}${partes[1][0] || ''}`.toUpperCase()
+}
+
 type AuthState = {
   user?: AuthUser
   logout: () => void
@@ -67,13 +83,21 @@ export default function BarbeariaDashboard() {
   const [activeTab, setActiveTab] = useState('agenda')
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [servicos, setServicos] = useState<Servico[]>([])
+  const [barbeiros, setBarbeiros] = useState<Barbeiro[]>([])
   const [barbearia, setBarbearia] = useState<BarbeariaPerfil | null>(null)
   const [mostrarNovoServico, setMostrarNovoServico] = useState(false)
+  const [mostrarNovoBarbeiro, setMostrarNovoBarbeiro] = useState(false)
   const [novoServico, setNovoServico] = useState({
     tipo: 'cabelo' as TipoServicoInline,
     preco: '',
     duracao: '40',
   })
+  const [novoBarbeiro, setNovoBarbeiro] = useState({
+    nome: '',
+    foto_url: '',
+    descricao: '',
+  })
+  const [barbeirosInicializados, setBarbeirosInicializados] = useState(false)
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -144,6 +168,56 @@ export default function BarbeariaDashboard() {
 
     carregarDashboard()
   }, [authLoading, isAuthenticated, user?.tipo])
+
+  useEffect(() => {
+    const donoId = String(barbearia?.id || user?.id || '')
+    if (!donoId) return
+
+    const key = `barbearia_profissionais_${donoId}`
+
+    try {
+      const salvo = localStorage.getItem(key)
+      if (!salvo) {
+        setBarbeiros([])
+        setBarbeirosInicializados(true)
+        return
+      }
+
+      const parsed = JSON.parse(salvo)
+      if (!Array.isArray(parsed)) {
+        setBarbeiros([])
+        setBarbeirosInicializados(true)
+        return
+      }
+
+      setBarbeiros(
+        parsed
+          .filter((item) => item?.nome)
+          .map((item) => ({
+            id: String(item.id || `barbeiro-${Date.now()}`),
+            nome: String(item.nome || ''),
+            foto_url: String(item.foto_url || ''),
+            descricao: String(item.descricao || ''),
+            cargo: String(item.cargo || item.descricao || 'Barbeiro'),
+            experiencia: String(item.experiencia || item.descricao || ''),
+          }))
+      )
+    } catch {
+      setBarbeiros([])
+    } finally {
+      setBarbeirosInicializados(true)
+    }
+  }, [barbearia?.id, user?.id])
+
+  useEffect(() => {
+    if (!barbeirosInicializados) return
+
+    const donoId = String(barbearia?.id || user?.id || '')
+    if (!donoId) return
+
+    const key = `barbearia_profissionais_${donoId}`
+    localStorage.setItem(key, JSON.stringify(barbeiros))
+  }, [barbeiros, barbeirosInicializados, barbearia?.id, user?.id])
 
   const handleLogout = () => {
     logout()
@@ -218,6 +292,33 @@ export default function BarbeariaDashboard() {
     }
   }
 
+  const adicionarBarbeiro = () => {
+    const nome = novoBarbeiro.nome.trim()
+    if (!nome) {
+      setErro('Informe o nome do barbeiro.')
+      return
+    }
+
+    const descricao = novoBarbeiro.descricao.trim()
+    const novo: Barbeiro = {
+      id: `barbeiro-${Date.now()}`,
+      nome,
+      foto_url: novoBarbeiro.foto_url.trim(),
+      descricao,
+      cargo: descricao || 'Barbeiro',
+      experiencia: descricao || '',
+    }
+
+    setBarbeiros((prev) => [...prev, novo])
+    setNovoBarbeiro({ nome: '', foto_url: '', descricao: '' })
+    setMostrarNovoBarbeiro(false)
+    setErro('')
+  }
+
+  const removerBarbeiro = (id: string) => {
+    setBarbeiros((prev) => prev.filter((item) => item.id !== id))
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -234,8 +335,8 @@ export default function BarbeariaDashboard() {
           <div className="flex justify-between items-center gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <Link href="/" className="flex items-center gap-3">
-                <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-                <span className="text-lg font-bold">Meu Barbeiro</span>
+                <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+                <span className="text-lg font-bold">Sou Barbeiro</span>
               </Link>
               <div className="hidden md:block border-l border-zinc-700 pl-3 min-w-0">
                 <h1 className="text-base font-semibold truncate">{barbearia?.nome || 'Minha Barbearia'}</h1>
@@ -282,6 +383,15 @@ export default function BarbeariaDashboard() {
           >
             <Scissors className="w-4 h-4" />
             Serviços
+          </button>
+          <button
+            onClick={() => setActiveTab('barbeiros')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg border flex items-center justify-center gap-2 ${
+              activeTab === 'barbeiros' ? 'border-white text-white bg-zinc-800' : 'border-zinc-700 text-zinc-400'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Barbeiros
           </button>
           <button
             onClick={() => setActiveTab('clientes')}
@@ -475,6 +585,100 @@ export default function BarbeariaDashboard() {
             <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p>Nenhum cliente cadastrado ainda.</p>
             <p className="text-sm mt-2">Os clientes aparecem quando fazem um agendamento.</p>
+          </div>
+        )}
+
+        {activeTab === 'barbeiros' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Barbeiros</h2>
+              <button
+                onClick={() => setMostrarNovoBarbeiro((prev) => !prev)}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Novo
+              </button>
+            </div>
+
+            {mostrarNovoBarbeiro && (
+              <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 space-y-3">
+                <p className="text-sm text-zinc-300">Adicionar barbeiro da equipe</p>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    value={novoBarbeiro.nome}
+                    onChange={(e) => setNovoBarbeiro((prev) => ({ ...prev, nome: e.target.value }))}
+                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
+                    placeholder="Nome"
+                  />
+                  <input
+                    type="url"
+                    value={novoBarbeiro.foto_url}
+                    onChange={(e) => setNovoBarbeiro((prev) => ({ ...prev, foto_url: e.target.value }))}
+                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
+                    placeholder="Foto (URL opcional)"
+                  />
+                  <input
+                    type="text"
+                    value={novoBarbeiro.descricao}
+                    onChange={(e) => setNovoBarbeiro((prev) => ({ ...prev, descricao: e.target.value }))}
+                    className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700"
+                    placeholder="Descricao (opcional)"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={adicionarBarbeiro}
+                    className="px-4 py-2 rounded-lg bg-white text-black text-sm font-medium"
+                  >
+                    Salvar barbeiro
+                  </button>
+                  <button
+                    onClick={() => setMostrarNovoBarbeiro(false)}
+                    className="px-4 py-2 rounded-lg border border-zinc-700 text-sm"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {barbeiros.length === 0 && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
+                Nenhum barbeiro cadastrado. Clique em Novo para adicionar.
+              </div>
+            )}
+
+            {barbeiros.map((barbeiro) => (
+              <div key={barbeiro.id} className="bg-zinc-900 rounded-xl p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  {barbeiro.foto_url ? (
+                    <img
+                      src={barbeiro.foto_url}
+                      alt={barbeiro.nome}
+                      className="w-12 h-12 rounded-full object-cover border border-zinc-700"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full border border-zinc-700 bg-zinc-800 flex items-center justify-center text-sm font-semibold text-zinc-100">
+                      {iniciaisNome(barbeiro.nome)}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{barbeiro.nome}</p>
+                    <p className="text-sm text-zinc-400 truncate">{barbeiro.descricao || 'Barbeiro da equipe'}</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => removerBarbeiro(barbeiro.id)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Remover
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
