@@ -189,6 +189,10 @@ export default function ConfigurarPage() {
   const [novaAvaliacao, setNovaAvaliacao] = useState({ autor: '', nota: '5', comentario: '' })
   const [servicos, setServicos] = useState<ServicoItem[]>([])
   const [novoServico, setNovoServico] = useState({ tipo: 'cabelo' as TipoServico, preco: '', duracao: '40' })
+  const [bannerUrl, setBannerUrl] = useState('')
+  const [galeria, setGaleria] = useState<string[]>([])
+  const [enviandoBanner, setEnviandoBanner] = useState(false)
+  const [enviandoGaleria, setEnviandoGaleria] = useState(false)
 
   const [form, setForm] = useState<FormBarbearia>({
     nome: '',
@@ -289,6 +293,28 @@ export default function ConfigurarPage() {
       const parsed = JSON.parse(salvo)
       if (Array.isArray(parsed)) {
         setProfissionais(parsed.filter((item) => item?.nome && item?.cargo))
+      }
+    } catch {
+      // ignore parse error
+    }
+  }, [barbeariaId, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const id = barbeariaId || user.id
+    const bannerKey = `barbearia_banner_${id}`
+    const galeriaKey = `barbearia_galeria_${id}`
+
+    const bannerSalvo = localStorage.getItem(bannerKey)
+    if (bannerSalvo) setBannerUrl(bannerSalvo)
+
+    const galeriaSalva = localStorage.getItem(galeriaKey)
+    if (!galeriaSalva) return
+
+    try {
+      const parsed = JSON.parse(galeriaSalva)
+      if (Array.isArray(parsed)) {
+        setGaleria(parsed.filter((item) => typeof item === 'string'))
       }
     } catch {
       // ignore parse error
@@ -586,6 +612,10 @@ export default function ConfigurarPage() {
       localStorage.setItem(profissionaisKey, JSON.stringify(profissionais))
       const avaliacoesKey = `barbearia_avaliacoes_${finalBarbeariaId || user.id}`
       localStorage.setItem(avaliacoesKey, JSON.stringify(avaliacoes))
+      const bannerKey = `barbearia_banner_${finalBarbeariaId || user.id}`
+      localStorage.setItem(bannerKey, bannerUrl)
+      const galeriaKey = `barbearia_galeria_${finalBarbeariaId || user.id}`
+      localStorage.setItem(galeriaKey, JSON.stringify(galeria))
 
       setMessage('Salvo com sucesso!')
     } catch (error: any) {
@@ -601,6 +631,50 @@ export default function ConfigurarPage() {
       const url = URL.createObjectURL(file)
       setForm({ ...form, logo_url: url })
     }
+  }
+
+  const handleBannerUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      setEnviandoBanner(true)
+      const resposta = await ApiService.uploadImagem(file)
+      setBannerUrl(String(resposta?.url || ''))
+      setMessage('Banner atualizado com sucesso.')
+    } catch (error: any) {
+      setMessage(error?.message || 'Nao foi possivel enviar o banner.')
+    } finally {
+      setEnviandoBanner(false)
+    }
+  }
+
+  const handleGaleriaUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    try {
+      setEnviandoGaleria(true)
+      const urls: string[] = []
+      for (const file of files) {
+        const resposta = await ApiService.uploadImagem(file)
+        const url = String(resposta?.url || '')
+        if (url) urls.push(url)
+      }
+
+      if (urls.length > 0) {
+        setGaleria((prev) => [...prev, ...urls])
+      }
+      setMessage('Imagens adicionadas na galeria.')
+    } catch (error: any) {
+      setMessage(error?.message || 'Nao foi possivel enviar imagens da galeria.')
+    } finally {
+      setEnviandoGaleria(false)
+    }
+  }
+
+  const removerImagemGaleria = (url: string) => {
+    setGaleria((prev) => prev.filter((item) => item !== url))
   }
 
   const qualidadeEndereco = Boolean(
@@ -671,6 +745,60 @@ export default function ConfigurarPage() {
                 />
               </label>
               <p className="text-xs text-zinc-500 mt-2">PNG, JPG ate 5MB</p>
+
+              <div className="mt-6 space-y-2">
+                <h3 className="text-sm font-medium text-zinc-200">Banner de fundo</h3>
+                <div className="h-24 w-full rounded-lg bg-zinc-800 overflow-hidden border border-zinc-700">
+                  {bannerUrl ? (
+                    <img src={bannerUrl} alt="Banner" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-xs text-zinc-500">Sem banner</div>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 px-3 py-2 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition w-fit text-sm">
+                  <Upload className="w-4 h-4" />
+                  {enviandoBanner ? 'Enviando...' : 'Enviar banner'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBannerUpload}
+                    className="hidden"
+                    disabled={enviandoBanner}
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 space-y-2">
+                <h3 className="text-sm font-medium text-zinc-200">Galeria</h3>
+                <label className="flex items-center gap-2 px-3 py-2 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition w-fit text-sm">
+                  <Upload className="w-4 h-4" />
+                  {enviandoGaleria ? 'Enviando imagens...' : 'Adicionar imagens'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleGaleriaUpload}
+                    className="hidden"
+                    disabled={enviandoGaleria}
+                  />
+                </label>
+                {galeria.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {galeria.map((url) => (
+                      <div key={url} className="relative rounded-lg overflow-hidden border border-zinc-700 h-20">
+                        <img src={url} alt="Galeria" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removerImagemGaleria(url)}
+                          className="absolute top-1 right-1 text-xs bg-black/70 px-2 py-0.5 rounded text-white"
+                        >
+                          x
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

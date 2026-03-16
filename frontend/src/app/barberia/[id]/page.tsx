@@ -20,6 +20,7 @@ type Professional = {
   name: string
   role: string
   experience: string
+  photoUrl?: string
 }
 
 type Review = {
@@ -54,6 +55,7 @@ const defaultShop = {
   whatsapp: '',
   openingHours: [] as string[],
   amenities: [] as string[],
+  galleryImages: [] as string[],
   services: [] as Service[],
   professionals: [] as Professional[],
   reviews: [] as Review[],
@@ -185,8 +187,19 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
               name: p.nome,
               role: p.cargo,
               experience: p.experiencia,
+              photoUrl: p.foto_url,
             })),
           }))
+        }
+
+        const bannerSalvo = carregarJsonStorage<string>(`barbearia_banner_${params.id}`, '')
+        if (bannerSalvo) {
+          setShop((prev) => ({ ...prev, bannerImage: bannerSalvo }))
+        }
+
+        const galeriaSalva = carregarJsonStorage<string[]>(`barbearia_galeria_${params.id}`, [])
+        if (Array.isArray(galeriaSalva) && galeriaSalva.length > 0) {
+          setShop((prev) => ({ ...prev, galleryImages: galeriaSalva }))
         }
 
         const avaliacoesSalvas = carregarJsonStorage<any[]>(`barbearia_avaliacoes_${params.id}`, [])
@@ -254,8 +267,8 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <Link href="/" className="flex items-center gap-3">
-              <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-              <span className="text-lg font-bold text-white">Meu Barbeiro</span>
+              <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+              <span className="text-lg font-bold text-white">Sou Barbeiro</span>
             </Link>
             <div className="hidden md:block border-l border-zinc-700 pl-3 min-w-0">
               <span className="font-semibold truncate block">{shop.name}</span>
@@ -319,6 +332,24 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
           </article>
 
           <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
+            <h2 className="text-lg font-semibold">Galeria</h2>
+            {shop.galleryImages.length === 0 ? (
+              <p className="mt-3 text-sm text-zinc-400">Nenhuma imagem cadastrada na galeria.</p>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                {shop.galleryImages.map((url) => (
+                  <img
+                    key={url}
+                    src={url}
+                    alt="Imagem da galeria"
+                    className="h-32 w-full rounded-xl object-cover border border-white/10"
+                  />
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
             <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3">
               {(['services', 'professionals', 'reviews'] as TabKey[]).map((tab) => (
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${activeTab === tab ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'}`}>
@@ -362,7 +393,15 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                 )}
                 {shop.professionals.map((professional) => (
                   <div key={professional.id} className="rounded-xl border border-white/10 bg-black/50 p-4 flex items-start gap-3">
-                    <MonochromeAvatar label={professional.name} className="h-12 w-12" />
+                    {professional.photoUrl ? (
+                      <img
+                        src={professional.photoUrl}
+                        alt={professional.name}
+                        className="h-12 w-12 rounded-xl border border-white/20 object-cover"
+                      />
+                    ) : (
+                      <MonochromeAvatar label={professional.name} className="h-12 w-12" />
+                    )}
                     <div>
                       <p className="font-medium text-white">{professional.name}</p>
                       <p className="text-sm text-zinc-300">{professional.role}</p>
