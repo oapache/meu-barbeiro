@@ -378,7 +378,15 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                       <p className="text-sm text-zinc-400">{service.durationMinutes} minutos</p>
                       </div>
                     </div>
-                    <p className="text-lg font-semibold text-white">{formatPrice(service.price)}</p>
+                    <div className="text-right space-y-2">
+                      <p className="text-lg font-semibold text-white">{formatPrice(service.price)}</p>
+                      <Link
+                        href={`/barberia/${params.id}/agendar`}
+                        className="inline-flex items-center justify-center rounded-lg border border-white/25 px-3 py-1.5 text-xs font-medium text-white hover:bg-white hover:text-black transition"
+                      >
+                        Agendar
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
