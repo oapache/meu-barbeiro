@@ -9,35 +9,49 @@ async function listAgendamentos(req, res) {
   try {
     const { barbearia_id, cliente_id, data, status } = req.query;
     
-    let query = 'SELECT * FROM agendamentos WHERE 1=1';
+    let query = `
+      SELECT
+        a.*,
+        b.nome AS barbearia_nome,
+        c.nome AS cliente_nome,
+        s.nome AS servico_nome,
+        s.preco AS servico_preco,
+        br.nome AS barbeiro_nome
+      FROM agendamentos a
+      LEFT JOIN barbearias b ON b.id = a.barbearia_id
+      LEFT JOIN usuarios c ON c.id = a.cliente_id
+      LEFT JOIN servicos s ON s.id = a.servico_id
+      LEFT JOIN usuarios br ON br.id = a.barbeiro_id
+      WHERE 1=1
+    `;
     const params = [];
     let paramCount = 1;
     
     if (barbearia_id) {
-      query += ` AND barbearia_id = $${paramCount}`;
+      query += ` AND a.barbearia_id = $${paramCount}`;
       params.push(barbearia_id);
       paramCount++;
     }
     
     if (cliente_id) {
-      query += ` AND cliente_id = $${paramCount}`;
+      query += ` AND a.cliente_id = $${paramCount}`;
       params.push(cliente_id);
       paramCount++;
     }
     
     if (data) {
-      query += ` AND data = $${paramCount}`;
+      query += ` AND a.data = $${paramCount}`;
       params.push(data);
       paramCount++;
     }
     
     if (status) {
-      query += ` AND status = $${paramCount}`;
+      query += ` AND a.status = $${paramCount}`;
       params.push(status);
       paramCount++;
     }
     
-    query += ' ORDER BY data, hora';
+    query += ' ORDER BY a.data, a.hora';
     
     const result = await pool.query(query, params);
     res.json({ agendamentos: result.rows });
@@ -104,6 +118,51 @@ async function createAgendamento(req, res) {
 }
 
 /**
+ * POST /api/agendamentos/por-email
+ * Cria agendamento buscando cliente por email
+ */
+async function createAgendamentoByEmail(req, res) {
+  try {
+    const { barbearia_id, servico_id, cliente_email, barbeiro_id, data, hora, observacoes } = req.body;
+
+    if (!barbearia_id || !servico_id || !cliente_email || !data || !hora) {
+      return res.status(400).json({ error: 'Barbearia, serviço, email, data e hora são obrigatórios' });
+    }
+
+    const clienteResult = await pool.query(
+      "SELECT id, nome, email FROM usuarios WHERE LOWER(email) = LOWER($1) AND tipo = 'cliente' LIMIT 1",
+      [cliente_email]
+    );
+
+    if (clienteResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Cliente não encontrado com este e-mail na plataforma' });
+    }
+
+    const cliente = clienteResult.rows[0];
+
+    const conflito = await pool.query(
+      'SELECT id FROM agendamentos WHERE barbearia_id = $1 AND data = $2 AND hora = $3 AND status != $4',
+      [barbearia_id, data, hora, 'cancelado']
+    );
+
+    if (conflito.rows.length > 0) {
+      return res.status(400).json({ error: 'Horário não disponível' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO agendamentos (barbearia_id, servico_id, cliente_id, barbeiro_id, data, hora, observacoes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [barbearia_id, servico_id, cliente.id, barbeiro_id || null, data, hora, observacoes || null]
+    );
+
+    res.status(201).json({ agendamento: result.rows[0], cliente });
+  } catch (error) {
+    console.error('Erro:', error);
+    res.status(500).json({ error: 'Erro ao criar agendamento por e-mail' });
+  }
+}
+
+/**
  * PUT /api/agendamentos/:id
  * Atualiza agendamento (confirma/cancela)
  */
@@ -153,4 +212,4 @@ async function deleteAgendamento(req, res) {
   }
 }
 
-module.exports = { listAgendamentos, createAgendamento, updateAgendamento, deleteAgendamento };
+module.exports = { listAgendamentos, createAgendamento, createAgendamentoByEmail, updateAgendamento, deleteAgendamento };

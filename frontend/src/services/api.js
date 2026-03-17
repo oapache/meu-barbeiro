@@ -2,9 +2,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 // Helper para obter token
 const getToken = () => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('token');
-  }
   return null;
 };
 
@@ -81,6 +78,65 @@ class ApiService {
     });
   }
 
+  static async getBarbeariaDetalhes(id) {
+    return fetchWithAuth(`/barbearias/${id}/detalhes`);
+  }
+
+  static async updateBarbeariaDetalhes(id, data) {
+    return fetchWithAuth(`/barbearias/${id}/detalhes`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ============ ASSINATURAS (STRIPE) ============
+  static async createSubscriptionCheckoutSession({ userId, planKey, barbeariaId }) {
+    return fetchWithAuth('/subscriptions/checkout-session', {
+      method: 'POST',
+      headers: {
+        'x-user-id': String(userId || ''),
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        plan_key: planKey,
+        barbearia_id: barbeariaId,
+      }),
+    });
+  }
+
+  static async getCurrentSubscription({ userId, barbeariaId } = {}) {
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', String(userId));
+    if (barbeariaId) params.set('barbearia_id', String(barbeariaId));
+    const query = params.toString();
+
+    return fetchWithAuth(`/subscriptions/current${query ? `?${query}` : ''}`, {
+      headers: {
+        'x-user-id': String(userId || ''),
+      },
+    });
+  }
+
+  static async createSubscriptionCustomerPortal({ userId, barbeariaId }) {
+    return fetchWithAuth('/subscriptions/customer-portal', {
+      method: 'POST',
+      headers: {
+        'x-user-id': String(userId || ''),
+      },
+      body: JSON.stringify({ user_id: userId, barbearia_id: barbeariaId }),
+    });
+  }
+
+  static async cancelCurrentSubscription({ userId, barbeariaId }) {
+    return fetchWithAuth('/subscriptions/cancel', {
+      method: 'POST',
+      headers: {
+        'x-user-id': String(userId || ''),
+      },
+      body: JSON.stringify({ user_id: userId, barbearia_id: barbeariaId }),
+    });
+  }
+
   // ============ SERVIÇOS ============
   static async listServicos(barbeariaId) {
     return fetchWithAuth(`/servicos/${barbeariaId}/servicos`);
@@ -118,6 +174,13 @@ class ApiService {
 
   static async createAgendamento(data) {
     return fetchWithAuth('/agendamentos', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async createAgendamentoByEmail(data) {
+    return fetchWithAuth('/agendamentos/por-email', {
       method: 'POST',
       body: JSON.stringify(data),
     });

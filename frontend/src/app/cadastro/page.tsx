@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth, getRedirectByUserType } from '@/context/AuthContext'
 
 export default function CadastroPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { register } = useAuth()
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
@@ -23,7 +24,8 @@ export default function CadastroPage() {
 
     try {
       const result = await register({ nome, email, telefone, senha, tipo })
-      router.push(getRedirectByUserType(result.usuario))
+      const redirect = searchParams.get('redirect')
+      router.push(redirect || getRedirectByUserType(result.usuario))
     } catch (err) {
       setError(err.message || 'Erro ao criar conta')
     } finally {
@@ -36,8 +38,8 @@ export default function CadastroPage() {
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
-            <span className="text-lg font-bold text-white">Meu Barbeiro</span>
+            <img src="/logo.jpg" alt="Sou Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
+            <span className="text-lg font-bold text-white">Sou Barbeiro</span>
           </Link>
           <nav className="flex gap-6">
             <Link href="/" className="text-sm font-medium text-zinc-300 hover:text-white transition">
@@ -59,7 +61,7 @@ export default function CadastroPage() {
             <p className="text-zinc-400 text-sm uppercase tracking-wider">Novo acesso</p>
             <h1 className="text-4xl font-bold mt-4 leading-tight">
               Crie sua conta e entre no
-              <span className="block text-zinc-300">ecossistema Meu Barbeiro</span>
+              <span className="block text-zinc-300">ecossistema Sou Barbeiro</span>
             </h1>
             <p className="text-zinc-400 mt-4 max-w-md">
               Clientes encontram e agendam com facilidade. Barbeiros organizam sua agenda e serviços no mesmo lugar.
@@ -81,7 +83,7 @@ export default function CadastroPage() {
               <Link href="/">
                 <img 
                   src="/logo.jpg" 
-                  alt="Meu Barbeiro" 
+                  alt="Sou Barbeiro" 
                   className="w-20 h-20 rounded-full object-cover mx-auto mb-4 border-4 border-white"
                 />
               </Link>

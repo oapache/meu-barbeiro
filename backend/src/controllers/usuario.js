@@ -24,7 +24,11 @@ async function register(req, res) {
     
     const result = await pool.query(
       `INSERT INTO usuarios (nome, email, senha_hash, telefone, tipo)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, nome, email, telefone, tipo, created_at`,
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, nome, email, telefone, tipo,
+                 subscription_plan, subscription_status,
+                 subscription_trial_ends_at, subscription_grace_ends_at, subscription_current_period_end,
+                 created_at`,
       [nome, email, senhaHash, telefone || null, tipo || 'cliente']
     );
     
@@ -34,7 +38,7 @@ async function register(req, res) {
 
     if (isDbUnavailable) {
       return res.status(503).json({
-        error: 'Banco indisponivel. Configure DATABASE_URL no backend/.env e tente novamente.'
+        error: 'Banco indisponível. Configure DATABASE_URL no backend/.env e tente novamente.'
       });
     }
 
@@ -75,7 +79,7 @@ async function login(req, res) {
 
     if (isDbUnavailable) {
       return res.status(503).json({
-        error: 'Banco indisponivel. Configure DATABASE_URL no backend/.env e tente novamente.'
+        error: 'Banco indisponível. Configure DATABASE_URL no backend/.env e tente novamente.'
       });
     }
 
@@ -91,7 +95,11 @@ async function getUsuario(req, res) {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT id, nome, email, telefone, tipo, avatar_url, created_at FROM usuarios WHERE id = $1',
+      `SELECT id, nome, email, telefone, tipo, avatar_url,
+              subscription_plan, subscription_status,
+              subscription_trial_ends_at, subscription_grace_ends_at, subscription_current_period_end,
+              created_at
+       FROM usuarios WHERE id = $1`,
       [id]
     );
     
@@ -117,7 +125,9 @@ async function updateUsuario(req, res) {
     
     const result = await pool.query(
       `UPDATE usuarios SET nome=$1, telefone=$2, avatar_url=$3, updated_at=NOW() 
-       WHERE id=$4 RETURNING id, nome, email, telefone, tipo, avatar_url`,
+       WHERE id=$4 RETURNING id, nome, email, telefone, tipo, avatar_url,
+                            subscription_plan, subscription_status,
+                            subscription_trial_ends_at, subscription_grace_ends_at, subscription_current_period_end`,
       [nome, telefone, avatar_url, id]
     );
     

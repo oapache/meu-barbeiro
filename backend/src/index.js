@@ -9,6 +9,10 @@ const config = require('./config');
 
 const app = express();
 
+// Stripe webhook must receive raw body for signature validation.
+const webhookRoutes = require('./routes/webhooks');
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
+
 // Middlewares
 app.use(helmet());
 app.use(cors());
@@ -23,6 +27,7 @@ const usuariosRoutes = require('./routes/usuarios');
 const servicosRoutes = require('./routes/servicos');
 const agendamentosRoutes = require('./routes/agendamentos');
 const uploadRoutes = require('./routes/upload');
+const subscriptionsRoutes = require('./routes/subscriptions');
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -41,6 +46,7 @@ app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/servicos', servicosRoutes);
 app.use('/api/agendamentos', agendamentosRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/subscriptions', subscriptionsRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

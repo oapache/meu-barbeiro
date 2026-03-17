@@ -1,4 +1,4 @@
-# Frontend - Meu Barbeiro
+# Frontend - Sou Barbeiro
 
 ## Setup
 \`\`\`bash

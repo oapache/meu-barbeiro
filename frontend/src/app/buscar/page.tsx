@@ -9,6 +9,7 @@ type BarbeariaResumo = {
   id: string | number
   nome: string
   endereco: string
+  logoUrl: string
   latitude: number | null
   longitude: number | null
   nota: number
@@ -50,6 +51,7 @@ export default function BuscarPage() {
   const [barbearias, setBarbearias] = useState<BarbeariaResumo[]>([])
   const [carregandoBarbearias, setCarregandoBarbearias] = useState(true)
   const [erroBarbearias, setErroBarbearias] = useState('')
+  const [logosComErro, setLogosComErro] = useState<Record<string, boolean>>({})
   const [localizacaoCliente, setLocalizacaoCliente] = useState<LocalizacaoCliente | null>(null)
   const [statusLocalizacao, setStatusLocalizacao] = useState<string>('')
   const [solicitandoLocalizacao, setSolicitandoLocalizacao] = useState(false)
@@ -66,7 +68,8 @@ export default function BuscarPage() {
         const normalizadas: BarbeariaResumo[] = lista.map((item: any) => ({
           id: item.id,
           nome: item.nome || 'Barbearia sem nome',
-          endereco: item.endereco || 'Endereco nao informado',
+          endereco: item.endereco || 'Endereço não informado',
+          logoUrl: String(item.logo_url || ''),
           latitude: item.latitude !== undefined && item.latitude !== null ? Number(item.latitude) : null,
           longitude: item.longitude !== undefined && item.longitude !== null ? Number(item.longitude) : null,
           nota: item.nota_media !== undefined && item.nota_media !== null ? Number(item.nota_media) : 0,
@@ -76,7 +79,7 @@ export default function BuscarPage() {
 
         setBarbearias(normalizadas)
       } catch {
-        setErroBarbearias('Nao foi possivel carregar as barbearias no momento.')
+        setErroBarbearias('Não foi possível carregar as barbearias no momento.')
         setBarbearias([])
       } finally {
         setCarregandoBarbearias(false)
@@ -88,12 +91,12 @@ export default function BuscarPage() {
 
   const solicitarLocalizacao = () => {
     if (!navigator.geolocation) {
-      setStatusLocalizacao('Seu navegador nao suporta geolocalizacao.')
+      setStatusLocalizacao('Seu navegador não suporta geolocalização.')
       return
     }
 
     setSolicitandoLocalizacao(true)
-    setStatusLocalizacao('Buscando sua localizacao...')
+    setStatusLocalizacao('Buscando sua localização...')
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -101,11 +104,11 @@ export default function BuscarPage() {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         })
-        setStatusLocalizacao('Localizacao ativada. Mostrando barbearias mais proximas.')
+        setStatusLocalizacao('Localização ativada. Mostrando barbearias mais próximas.')
         setSolicitandoLocalizacao(false)
       },
       () => {
-        setStatusLocalizacao('Nao foi possivel obter sua localizacao. Verifique as permissoes do navegador.')
+        setStatusLocalizacao('Não foi possível obter sua localização. Verifique as permissões do navegador.')
         setSolicitandoLocalizacao(false)
       },
       {
@@ -133,7 +136,7 @@ export default function BuscarPage() {
         return {
           ...barbearia,
           distanciaKm,
-          distanciaLabel: distanciaKm !== null ? formatarDistancia(distanciaKm) : 'Localizacao nao informada',
+          distanciaLabel: distanciaKm !== null ? formatarDistancia(distanciaKm) : 'Localização não informada',
         }
       })
       .sort((a, b) => {
@@ -151,8 +154,8 @@ export default function BuscarPage() {
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4 mb-4">
             <Link href="/" className="flex items-center gap-3">
-              <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-              <span className="text-lg font-bold">Meu Barbeiro</span>
+              <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+              <span className="text-lg font-bold">Sou Barbeiro</span>
             </Link>
 
             <nav className="flex items-center gap-4 md:gap-6 text-sm">
@@ -199,7 +202,7 @@ export default function BuscarPage() {
                 disabled={solicitandoLocalizacao}
                 className="mt-5 w-full rounded-lg border border-white/20 bg-black/40 px-3 py-2 text-sm font-medium text-white hover:bg-black/60 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {solicitandoLocalizacao ? 'Obtendo localizacao...' : 'Usar minha localizacao'}
+                {solicitandoLocalizacao ? 'Obtendo localização...' : 'Usar minha localização'}
               </button>
 
               {statusLocalizacao && (
@@ -226,7 +229,7 @@ export default function BuscarPage() {
 
             {!localizacaoCliente && (
               <div className="mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
-                Ative sua localizacao para encontrar barbearias realmente proximas de voce.
+                Ative sua localização para encontrar barbearias realmente próximas de você.
               </div>
             )}
 
@@ -247,8 +250,23 @@ export default function BuscarPage() {
                 <Link key={barbearia.id} href={`/barberia/${String(barbearia.id)}`}>
                   <div className="h-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
                     <div className="flex items-start gap-4">
-                      <div className="w-16 h-16 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0">
-                        <span className="text-2xl">✂️</span>
+                      <div className="w-16 h-16 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 border border-white/10 overflow-hidden">
+                        {barbearia.logoUrl && !logosComErro[String(barbearia.id)] ? (
+                          <img
+                            src={barbearia.logoUrl}
+                            alt={barbearia.nome}
+                            className="w-full h-full object-cover"
+                            onError={() => {
+                              setLogosComErro((prev) => ({ ...prev, [String(barbearia.id)]: true }))
+                            }}
+                          />
+                        ) : (
+                          <img
+                            src="/fallback-barbershop-mono.svg"
+                            alt="Logo padrão"
+                            className="w-9 h-9 opacity-90"
+                          />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
@@ -290,3 +308,4 @@ export default function BuscarPage() {
     </main>
   )
 }
+

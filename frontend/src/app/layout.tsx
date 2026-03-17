@@ -3,7 +3,7 @@ import './globals.css'
 import Providers from './providers'
 
 export const metadata: Metadata = {
-  title: 'Meu Barbeiro',
+  title: 'Sou Barbeiro',
   description: 'App de barbearia - Agendamento online',
   viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
   themeColor: '#000000',
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Meu Barbeiro'
+    title: 'Sou Barbeiro'
   }
 }
 
@@ -21,8 +21,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="pt-BR">
-      <body className="min-h-screen bg-white">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className="min-h-screen bg-white" suppressHydrationWarning>
         <Providers>
           {children}
         </Providers>

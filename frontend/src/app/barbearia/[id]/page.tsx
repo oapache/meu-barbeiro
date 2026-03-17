@@ -33,8 +33,8 @@ function Header() {
     <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
       <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-3">
-          <img src="/logo.jpg" alt="Meu Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-          <span className="text-lg font-bold text-white">Meu Barbeiro</span>
+          <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
+          <span className="text-lg font-bold text-white">Sou Barbeiro</span>
         </Link>
         <nav className="flex gap-4">
           <Link href="/" className="text-sm font-medium text-zinc-300 hover:text-white transition">

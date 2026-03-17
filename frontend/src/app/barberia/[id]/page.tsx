@@ -46,10 +46,10 @@ const defaultShop = {
   reviewsCount: 0,
   bannerImage: 'https://images.unsplash.com/photo-1622287162716-f311baa1a2b8?auto=format&fit=crop&w=1600&q=80',
   logoImage: '/logo.jpg',
-  tagline: 'Conheca os servicos e profissionais desta barbearia.',
-  description: 'Acompanhe as informacoes atualizadas da barbearia.',
-  address: 'Endereco nao informado',
-  district: 'Regiao',
+  tagline: 'Conheça os serviços e profissionais desta barbearia.',
+  description: 'Acompanhe as informações atualizadas da barbearia.',
+  address: 'Endereço não informado',
+  district: 'Região',
   city: 'Cidade',
   phone: '',
   whatsapp: '',
@@ -62,19 +62,19 @@ const defaultShop = {
 }
 
 const extrairCidadeUF = (endereco: string) => {
-  if (!endereco) return { district: 'Regiao', city: 'Cidade' }
+  if (!endereco) return { district: 'Região', city: 'Cidade' }
   const partes = endereco.split(',').map((p) => p.trim()).filter(Boolean)
 
   if (partes.length >= 2) {
     const ultimas = partes[partes.length - 1]
     const penultima = partes[partes.length - 2]
     return {
-      district: penultima || 'Regiao',
+      district: penultima || 'Região',
       city: ultimas || 'Cidade',
     }
   }
 
-  return { district: 'Regiao', city: endereco }
+  return { district: 'Região', city: endereco }
 }
 
 function formatPrice(value: number) {
@@ -89,6 +89,14 @@ function ratingStars(rating: number) {
 const DAY_KEY_BY_INDEX = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
 
 const horarioCurto = (valor: string) => (valor || '').slice(0, 5)
+
+const horarioParaMinutos = (valor: string) => {
+  const [hora, minuto] = String(valor || '').split(':')
+  const h = Number(hora)
+  const m = Number(minuto)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+  return (h * 60) + m
+}
 
 const serviceImageByName = (name: string) => {
   const normalized = name.toLowerCase()
@@ -113,15 +121,16 @@ function MonochromeAvatar({ label, className }: { label: string; className: stri
   )
 }
 
-const carregarJsonStorage = <T,>(key: string, fallback: T): T => {
-  const raw = localStorage.getItem(key)
-  if (!raw) return fallback
-
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback
-  }
+function ShopLogoFallback({ className }: { className: string }) {
+  return (
+    <div className={`${className} rounded-xl border border-white/20 bg-zinc-900 flex items-center justify-center`}>
+      <img
+        src="/fallback-barbershop-mono.svg"
+        alt="Logo padrão da barbearia"
+        className="h-10 w-10 opacity-90"
+      />
+    </div>
+  )
 }
 
 export default function BarberShopDetailPage({ params }: { params: { id: string } }) {
@@ -129,6 +138,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
   const [activeTab, setActiveTab] = useState<TabKey>('services')
   const [shop, setShop] = useState(defaultShop)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [logoError, setLogoError] = useState(false)
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklyScheduleItem[]>([])
 
@@ -136,6 +146,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
     const carregarBarbearia = async () => {
       try {
         setLoading(true)
+        setLoadError(null)
 
         const detalhe = await ApiService.getBarbearia(params.id)
         const barbearia = detalhe?.barbearia
@@ -154,7 +165,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             whatsapp: (barbearia.whatsapp_link || '').replace(/\D/g, '') || prev.whatsapp,
             logoImage: barbearia.logo_url || prev.logoImage,
             openingHours: [
-              `Horario principal: ${barbearia.horario_abertura || '09:00'} - ${barbearia.horario_fechamento || '20:00'}`,
+              `Horário principal: ${barbearia.horario_abertura || '09:00'} - ${barbearia.horario_fechamento || '20:00'}`,
             ],
             tagline: `Atendimento profissional na ${barbearia.nome || 'barbearia'}.`,
           }))
@@ -173,53 +184,58 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
           }
         }
 
-        const amenidadesSalvas = carregarJsonStorage<string[]>(`barbearia_amenidades_${params.id}`, [])
-        if (Array.isArray(amenidadesSalvas) && amenidadesSalvas.length > 0) {
-          setShop((prev) => ({ ...prev, amenities: amenidadesSalvas }))
-        }
+        try {
+          const respostaDetalhes = await ApiService.getBarbeariaDetalhes(params.id)
+          const detalhes = respostaDetalhes?.detalhes || {}
 
-        const profissionaisSalvos = carregarJsonStorage<any[]>(`barbearia_profissionais_${params.id}`, [])
-        if (Array.isArray(profissionaisSalvos) && profissionaisSalvos.length > 0) {
+          const amenidades = Array.isArray(detalhes?.amenidades)
+            ? detalhes.amenidades.filter((item: any) => typeof item === 'string')
+            : []
+
+          const professionals = Array.isArray(detalhes?.profissionais)
+            ? detalhes.profissionais
+              .filter((p: any) => p?.nome)
+              .map((p: any) => ({
+                id: String(p.id || ''),
+                name: String(p.nome || ''),
+                role: String(p.cargo || 'Barbeiro'),
+                experience: String(p.experiencia || ''),
+                photoUrl: String(p.foto_url || ''),
+              }))
+            : []
+
+          const galleryImages = Array.isArray(detalhes?.galeria)
+            ? detalhes.galeria.filter((item: any) => typeof item === 'string')
+            : []
+
+          const reviews = Array.isArray(detalhes?.avaliacoes)
+            ? detalhes.avaliacoes
+              .filter((r: any) => r?.autor && r?.comentario)
+              .map((r: any) => ({
+                id: String(r.id || ''),
+                author: String(r.autor || ''),
+                rating: Number(r.nota || 0),
+                comment: String(r.comentario || ''),
+                date: String(r.data || ''),
+              }))
+            : []
+
+          const media = reviews.length > 0
+            ? reviews.reduce((acc, item) => acc + item.rating, 0) / reviews.length
+            : 0
+
           setShop((prev) => ({
             ...prev,
-            professionals: profissionaisSalvos.map((p) => ({
-              id: String(p.id),
-              name: p.nome,
-              role: p.cargo,
-              experience: p.experiencia,
-              photoUrl: p.foto_url,
-            })),
-          }))
-        }
-
-        const bannerSalvo = carregarJsonStorage<string>(`barbearia_banner_${params.id}`, '')
-        if (bannerSalvo) {
-          setShop((prev) => ({ ...prev, bannerImage: bannerSalvo }))
-        }
-
-        const galeriaSalva = carregarJsonStorage<string[]>(`barbearia_galeria_${params.id}`, [])
-        if (Array.isArray(galeriaSalva) && galeriaSalva.length > 0) {
-          setShop((prev) => ({ ...prev, galleryImages: galeriaSalva }))
-        }
-
-        const avaliacoesSalvas = carregarJsonStorage<any[]>(`barbearia_avaliacoes_${params.id}`, [])
-        if (Array.isArray(avaliacoesSalvas) && avaliacoesSalvas.length > 0) {
-          const reviews = avaliacoesSalvas.map((r) => ({
-            id: String(r.id),
-            author: r.autor,
-            rating: Number(r.nota || 0),
-            comment: r.comentario,
-            date: r.data,
-          }))
-
-          const media = reviews.reduce((acc, item) => acc + item.rating, 0) / reviews.length
-
-          setShop((prev) => ({
-            ...prev,
+            amenities: amenidades,
+            professionals,
+            bannerImage: String(detalhes?.banner_url || prev.bannerImage),
+            galleryImages,
             reviews,
             reviewsCount: reviews.length,
             rating: Number.isFinite(media) ? media : 0,
           }))
+        } catch {
+          // Mantem os dados basicos da barbearia mesmo sem detalhes.
         }
 
         try {
@@ -238,6 +254,9 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
         } catch {
           setShop((prev) => ({ ...prev, services: [] }))
         }
+      } catch (error: any) {
+        const message = String(error?.message || 'Erro ao carregar barbearia')
+        setLoadError(message)
       } finally {
         setLoading(false)
       }
@@ -256,6 +275,24 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <p>Carregando barbearia...</p>
+      </main>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+        <div className="max-w-md text-center space-y-4">
+          <h1 className="text-2xl font-semibold">Barbearia não encontrada</h1>
+          <p className="text-zinc-400">A barbearia solicitada pode não existir neste ambiente local.</p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Voltar para início
+          </Link>
+        </div>
       </main>
     )
   }
@@ -298,7 +335,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
                 {!shop.logoImage || logoError ? (
-                  <MonochromeAvatar label={shop.name} className="h-16 w-16 sm:h-20 sm:w-20" />
+                  <ShopLogoFallback className="h-16 w-16 sm:h-20 sm:w-20" />
                 ) : (
                   <img
                     src={shop.logoImage}
@@ -362,7 +399,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
               <div className="space-y-3">
                 {shop.services.length === 0 && (
                   <div className="rounded-xl border border-white/10 bg-black/50 p-4 text-sm text-zinc-400">
-                    Nenhum servico cadastrado ainda.
+                    Nenhum serviço cadastrado ainda.
                   </div>
                 )}
                 {shop.services.map((service) => (
@@ -381,7 +418,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                     <div className="text-right space-y-2">
                       <p className="text-lg font-semibold text-white">{formatPrice(service.price)}</p>
                       <Link
-                        href={`/barberia/${params.id}/agendar`}
+                        href={`/barberia/${params.id}/agendar?servicoId=${service.id}`}
                         className="inline-flex items-center justify-center rounded-lg border border-white/25 px-3 py-1.5 text-xs font-medium text-white hover:bg-white hover:text-black transition"
                       >
                         Agendar
@@ -475,14 +512,22 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             <p className="mt-3 text-sm text-zinc-300">{shop.address}</p>
             <p className="mt-1 text-xs text-zinc-500">{shop.district} - {shop.city}</p>
             <h4 className="mt-5 text-sm font-semibold text-white">Contato</h4>
-            <p className="mt-2 text-sm text-zinc-300">{shop.phone || 'Nao informado'}</p>
+            <p className="mt-2 text-sm text-zinc-300">{shop.phone || 'Não informado'}</p>
             <h4 className="mt-5 text-sm font-semibold text-white">Horários</h4>
             {weeklySchedule.length > 0 ? (
               <div className="mt-2 space-y-2">
                 {weeklySchedule.map((dia) => {
                   const todayKey = DAY_KEY_BY_INDEX[new Date().getDay()]
                   const isToday = dia.key === todayKey
-                  const statusColor = isToday ? (dia.fechado ? 'text-red-400' : 'text-green-400') : 'text-zinc-300'
+                  const agora = new Date()
+                  const minutosAgora = (agora.getHours() * 60) + agora.getMinutes()
+                  const aberturaMin = horarioParaMinutos(dia.abertura)
+                  const fechamentoMin = horarioParaMinutos(dia.fechamento)
+                  const foraDoHorarioHoje = isToday && !dia.fechado && aberturaMin !== null && fechamentoMin !== null
+                    ? (minutosAgora < aberturaMin || minutosAgora >= fechamentoMin)
+                    : false
+                  const fechadoNoMomento = dia.fechado || foraDoHorarioHoje
+                  const statusColor = isToday ? (fechadoNoMomento ? 'text-red-400' : 'text-green-400') : 'text-zinc-300'
 
                   return (
                     <div key={dia.key} className="rounded-lg border border-white/10 bg-black/50 px-3 py-2">
@@ -491,20 +536,20 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                           {dia.label}
                         </p>
                         {isToday && (
-                          <span className={`text-xs font-semibold ${dia.fechado ? 'text-red-400' : 'text-green-400'}`}>
+                          <span className={`text-xs font-semibold ${fechadoNoMomento ? 'text-red-400' : 'text-green-400'}`}>
                             HOJE
                           </span>
                         )}
                       </div>
-                      <p className={`text-sm mt-1 ${dia.fechado ? 'text-red-400' : 'text-zinc-300'}`}>
-                        {dia.fechado ? 'Fechado' : `${horarioCurto(dia.abertura)} - ${horarioCurto(dia.fechamento)}`}
+                      <p className={`text-sm mt-1 ${fechadoNoMomento ? 'text-red-400' : 'text-zinc-300'}`}>
+                        {fechadoNoMomento ? 'Fechado' : `${horarioCurto(dia.abertura)} - ${horarioCurto(dia.fechamento)}`}
                       </p>
                     </div>
                   )
                 })}
               </div>
             ) : shop.openingHours.length === 0 ? (
-              <p className="mt-2 text-sm text-zinc-400">Horarios nao informados.</p>
+              <p className="mt-2 text-sm text-zinc-400">Horários não informados.</p>
             ) : (
               <ul className="mt-2 space-y-1 text-sm text-zinc-300">
                 {shop.openingHours.map((hour) => (<li key={hour}>{hour}</li>))}
@@ -521,3 +566,4 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
     </main>
   )
 }
+

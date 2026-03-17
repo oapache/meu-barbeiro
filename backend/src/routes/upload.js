@@ -8,7 +8,7 @@ const upload = require('../middleware/upload');
  */
 router.post('/', upload.single('file'), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: 'Arquivo nao enviado' });
+    return res.status(400).json({ error: 'Arquivo não enviado' });
   }
 
   const baseUrl = `${req.protocol}://${req.get('host')}`;

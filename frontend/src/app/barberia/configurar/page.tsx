@@ -193,6 +193,7 @@ export default function ConfigurarPage() {
   const [galeria, setGaleria] = useState<string[]>([])
   const [enviandoBanner, setEnviandoBanner] = useState(false)
   const [enviandoGaleria, setEnviandoGaleria] = useState(false)
+  const [enviandoLogo, setEnviandoLogo] = useState(false)
 
   const [form, setForm] = useState<FormBarbearia>({
     nome: '',
@@ -272,9 +273,34 @@ export default function ConfigurarPage() {
           } catch {
             setServicos([])
           }
+
+          try {
+            const respostaDetalhes = await ApiService.getBarbeariaDetalhes(atual.id)
+            const detalhes = respostaDetalhes?.detalhes || {}
+
+            if (Array.isArray(detalhes?.profissionais)) {
+              setProfissionais(detalhes.profissionais.filter((item: any) => item?.nome && item?.cargo))
+            }
+
+            if (Array.isArray(detalhes?.avaliacoes)) {
+              setAvaliacoes(detalhes.avaliacoes.filter((item: any) => item?.autor && item?.comentario))
+            }
+
+            if (Array.isArray(detalhes?.amenidades)) {
+              setAmenidadesSelecionadas(detalhes.amenidades.filter((item: any) => typeof item === 'string'))
+            }
+
+            setBannerUrl(String(detalhes?.banner_url || ''))
+
+            if (Array.isArray(detalhes?.galeria)) {
+              setGaleria(detalhes.galeria.filter((item: any) => typeof item === 'string'))
+            }
+          } catch {
+            // Mantem tela editavel mesmo sem detalhes salvos.
+          }
         }
       } catch {
-        setMessage('Nao foi possivel carregar os dados atuais da barbearia.')
+        setMessage('Não foi possível carregar os dados atuais da barbearia.')
       } finally {
         setLoadingInicial(false)
       }
@@ -282,76 +308,6 @@ export default function ConfigurarPage() {
 
     carregarBarbearia()
   }, [user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-    const storageKey = `barbearia_profissionais_${barbeariaId || user.id}`
-    const salvo = localStorage.getItem(storageKey)
-    if (!salvo) return
-
-    try {
-      const parsed = JSON.parse(salvo)
-      if (Array.isArray(parsed)) {
-        setProfissionais(parsed.filter((item) => item?.nome && item?.cargo))
-      }
-    } catch {
-      // ignore parse error
-    }
-  }, [barbeariaId, user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-    const id = barbeariaId || user.id
-    const bannerKey = `barbearia_banner_${id}`
-    const galeriaKey = `barbearia_galeria_${id}`
-
-    const bannerSalvo = localStorage.getItem(bannerKey)
-    if (bannerSalvo) setBannerUrl(bannerSalvo)
-
-    const galeriaSalva = localStorage.getItem(galeriaKey)
-    if (!galeriaSalva) return
-
-    try {
-      const parsed = JSON.parse(galeriaSalva)
-      if (Array.isArray(parsed)) {
-        setGaleria(parsed.filter((item) => typeof item === 'string'))
-      }
-    } catch {
-      // ignore parse error
-    }
-  }, [barbeariaId, user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-    const storageKey = `barbearia_avaliacoes_${barbeariaId || user.id}`
-    const salvo = localStorage.getItem(storageKey)
-    if (!salvo) return
-
-    try {
-      const parsed = JSON.parse(salvo)
-      if (Array.isArray(parsed)) {
-        setAvaliacoes(parsed.filter((item) => item?.autor && item?.comentario))
-      }
-    } catch {
-      // ignore parse error
-    }
-  }, [barbeariaId, user?.id])
-
-  useEffect(() => {
-    if (!user?.id) return
-    const storageKey = `barbearia_amenidades_${barbeariaId || user.id}`
-    const salvo = localStorage.getItem(storageKey)
-    if (!salvo) return
-
-    try {
-      const parsed = JSON.parse(salvo)
-      if (Array.isArray(parsed)) {
-        setAmenidadesSelecionadas(parsed.filter((item) => typeof item === 'string'))
-      }
-    } catch {
-      // ignore parse error
-    }
-  }, [barbeariaId, user?.id])
 
   const alternarAmenidade = (amenidade: string) => {
     setAmenidadesSelecionadas((prev) => {
@@ -382,7 +338,7 @@ export default function ConfigurarPage() {
         id: `${Date.now()}`,
         nome: novoProfissional.nome.trim(),
         cargo: novoProfissional.cargo.trim(),
-        experiencia: novoProfissional.experiencia.trim() || 'Experiencia nao informada',
+        experiencia: novoProfissional.experiencia.trim() || 'Experiência não informada',
       },
     ])
 
@@ -421,17 +377,17 @@ export default function ConfigurarPage() {
     const duracaoNumero = Number(novoServico.duracao)
 
     if (Number.isNaN(precoNumero) || precoNumero <= 0) {
-      setMessage('Defina o valor do servico (ex: 45).')
+      setMessage('Defina o valor do serviço (ex: 45).')
       return
     }
 
     if (Number.isNaN(duracaoNumero) || duracaoNumero <= 0) {
-      setMessage('Defina a duracao em minutos.')
+      setMessage('Defina a duração em minutos.')
       return
     }
 
     if (!barbeariaId) {
-      setMessage('Salve os dados da barbearia antes de cadastrar servicos.')
+      setMessage('Salve os dados da barbearia antes de cadastrar serviços.')
       return
     }
 
@@ -439,7 +395,7 @@ export default function ConfigurarPage() {
       const modelo = SERVICO_POR_TIPO[novoServico.tipo]
       const resposta = await ApiService.createServico(barbeariaId, {
         nome: modelo.nome,
-        descricao: `Servico ${modelo.nome}`,
+        descricao: `Serviço ${modelo.nome}`,
         preco: precoNumero,
         duracao_minutos: duracaoNumero,
       })
@@ -459,9 +415,9 @@ export default function ConfigurarPage() {
       }
 
       setNovoServico({ tipo: 'cabelo', preco: '', duracao: '40' })
-      setMessage('Servico cadastrado com sucesso.')
+      setMessage('Serviço cadastrado com sucesso.')
     } catch (error: any) {
-      setMessage(error?.message || 'Nao foi possivel cadastrar o servico.')
+      setMessage(error?.message || 'Não foi possível cadastrar o serviço.')
     }
   }
 
@@ -470,14 +426,14 @@ export default function ConfigurarPage() {
       await ApiService.deleteServico(id)
       setServicos((prev) => prev.filter((servico) => servico.id !== id))
     } catch {
-      setMessage('Nao foi possivel remover o servico.')
+      setMessage('Não foi possível remover o serviço.')
     }
   }
 
   const buscarCep = async () => {
     const cepNumerico = form.cep.replace(/\D/g, '')
     if (cepNumerico.length !== 8) {
-      setMessage('Informe um CEP valido com 8 digitos.')
+      setMessage('Informe um CEP válido com 8 dígitos.')
       return
     }
 
@@ -488,7 +444,7 @@ export default function ConfigurarPage() {
       const dados = await resposta.json()
 
       if (dados.erro) {
-        throw new Error('CEP nao encontrado.')
+        throw new Error('CEP não encontrado.')
       }
 
       setForm((prev) => ({
@@ -500,7 +456,7 @@ export default function ConfigurarPage() {
         estado: dados.uf || prev.estado,
       }))
     } catch (error: any) {
-      setMessage(error?.message || 'Nao foi possivel consultar o CEP.')
+      setMessage(error?.message || 'Não foi possível consultar o CEP.')
     } finally {
       setLoadingCep(false)
     }
@@ -519,9 +475,9 @@ export default function ConfigurarPage() {
   }
 
   const validarEndereco = () => {
-    if (!form.cep || form.cep.replace(/\D/g, '').length !== 8) return 'CEP invalido.'
+    if (!form.cep || form.cep.replace(/\D/g, '').length !== 8) return 'CEP inválido.'
     if (!form.rua.trim()) return 'Informe a rua.'
-    if (!form.numero.trim()) return 'Informe o numero.'
+    if (!form.numero.trim()) return 'Informe o número.'
     if (!form.bairro.trim()) return 'Informe o bairro.'
     if (!form.cidade.trim()) return 'Informe a cidade.'
     if (!form.estado.trim() || form.estado.trim().length !== 2) return 'Informe o estado com 2 letras.'
@@ -534,7 +490,7 @@ export default function ConfigurarPage() {
 
     for (const dia of diasAbertos) {
       if (!dia.abertura || !dia.fechamento) return `Defina abertura e fechamento para ${dia.label}.`
-      if (dia.abertura >= dia.fechamento) return `Horario invalido em ${dia.label}.`
+      if (dia.abertura >= dia.fechamento) return `Horário inválido em ${dia.label}.`
     }
 
     return null
@@ -604,18 +560,17 @@ export default function ConfigurarPage() {
         }
       }
 
-      const storageKey = `barbearia_horarios_${finalBarbeariaId || user.id}`
-      localStorage.setItem(storageKey, JSON.stringify(horarios))
-      const amenidadesKey = `barbearia_amenidades_${finalBarbeariaId || user.id}`
-      localStorage.setItem(amenidadesKey, JSON.stringify(amenidadesSelecionadas))
-      const profissionaisKey = `barbearia_profissionais_${finalBarbeariaId || user.id}`
-      localStorage.setItem(profissionaisKey, JSON.stringify(profissionais))
-      const avaliacoesKey = `barbearia_avaliacoes_${finalBarbeariaId || user.id}`
-      localStorage.setItem(avaliacoesKey, JSON.stringify(avaliacoes))
-      const bannerKey = `barbearia_banner_${finalBarbeariaId || user.id}`
-      localStorage.setItem(bannerKey, bannerUrl)
-      const galeriaKey = `barbearia_galeria_${finalBarbeariaId || user.id}`
-      localStorage.setItem(galeriaKey, JSON.stringify(galeria))
+      if (!finalBarbeariaId) {
+        throw new Error('Não foi possível identificar a barbearia para salvar os detalhes.')
+      }
+
+      await ApiService.updateBarbeariaDetalhes(finalBarbeariaId, {
+        amenidades: amenidadesSelecionadas,
+        profissionais,
+        avaliacoes,
+        banner_url: bannerUrl,
+        galeria,
+      })
 
       setMessage('Salvo com sucesso!')
     } catch (error: any) {
@@ -625,11 +580,25 @@ export default function ConfigurarPage() {
     }
   }
 
-  const handleLogoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const url = URL.createObjectURL(file)
-      setForm({ ...form, logo_url: url })
+    if (!file) return
+
+    try {
+      setEnviandoLogo(true)
+      const resposta = await ApiService.uploadImagem(file)
+      const url = String(resposta?.url || '')
+
+      if (!url) {
+        throw new Error('Não foi possível obter a URL do logo enviado.')
+      }
+
+      setForm((prev) => ({ ...prev, logo_url: url }))
+      setMessage('Logo atualizado com sucesso.')
+    } catch (error: any) {
+      setMessage(error?.message || 'Não foi possível enviar o logo.')
+    } finally {
+      setEnviandoLogo(false)
     }
   }
 
@@ -643,7 +612,7 @@ export default function ConfigurarPage() {
       setBannerUrl(String(resposta?.url || ''))
       setMessage('Banner atualizado com sucesso.')
     } catch (error: any) {
-      setMessage(error?.message || 'Nao foi possivel enviar o banner.')
+      setMessage(error?.message || 'Não foi possível enviar o banner.')
     } finally {
       setEnviandoBanner(false)
     }
@@ -667,7 +636,7 @@ export default function ConfigurarPage() {
       }
       setMessage('Imagens adicionadas na galeria.')
     } catch (error: any) {
-      setMessage(error?.message || 'Nao foi possivel enviar imagens da galeria.')
+      setMessage(error?.message || 'Não foi possível enviar imagens da galeria.')
     } finally {
       setEnviandoGaleria(false)
     }
@@ -736,15 +705,16 @@ export default function ConfigurarPage() {
 
               <label className="flex items-center gap-2 px-4 py-2 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition w-fit">
                 <Upload className="w-4 h-4" />
-                <span className="text-sm">Alterar logo</span>
+                <span className="text-sm">{enviandoLogo ? 'Enviando logo...' : 'Alterar logo'}</span>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleLogoUpload}
+                  disabled={enviandoLogo}
                   className="hidden"
                 />
               </label>
-              <p className="text-xs text-zinc-500 mt-2">PNG, JPG ate 5MB</p>
+              <p className="text-xs text-zinc-500 mt-2">PNG, JPG até 5MB</p>
 
               <div className="mt-6 space-y-2">
                 <h3 className="text-sm font-medium text-zinc-200">Banner de fundo</h3>
@@ -942,7 +912,7 @@ export default function ConfigurarPage() {
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
               <h2 className="font-medium flex items-center gap-2">
                 <Clock className="w-4 h-4" />
-                Horarios de Funcionamento (por dia)
+                Horários de Funcionamento (por dia)
               </h2>
 
               <div className="space-y-3">
@@ -966,7 +936,7 @@ export default function ConfigurarPage() {
                           onChange={(e) => atualizarHorarioDia(dia.key, 'abertura', e.target.value)}
                           className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:opacity-50"
                         />
-                        <span className="text-zinc-500">ate</span>
+                        <span className="text-zinc-500">até</span>
                         <input
                           type="time"
                           value={dia.fechamento}
@@ -982,11 +952,11 @@ export default function ConfigurarPage() {
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
-              <h2 className="font-medium">Servicos</h2>
-              <p className="text-sm text-zinc-400">Clique em novo servico para definir tipo, imagem e valor do corte.</p>
+              <h2 className="font-medium">Serviços</h2>
+              <p className="text-sm text-zinc-400">Clique em novo serviço para definir tipo, imagem e valor do corte.</p>
 
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 space-y-3">
-                <p className="text-sm font-medium text-white">Novo servico</p>
+                <p className="text-sm font-medium text-white">Novo serviço</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
@@ -1016,7 +986,7 @@ export default function ConfigurarPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Duracao (min)</label>
+                    <label className="block text-xs text-zinc-400 mb-1">Duração (min)</label>
                     <input
                       type="number"
                       min="5"
@@ -1044,7 +1014,7 @@ export default function ConfigurarPage() {
                   onClick={adicionarServico}
                   className="px-4 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800"
                 >
-                  Novo servico
+                  Novo serviço
                 </button>
               </div>
 
@@ -1067,13 +1037,13 @@ export default function ConfigurarPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-zinc-400">Nenhum servico cadastrado ainda.</p>
+                <p className="text-sm text-zinc-400">Nenhum serviço cadastrado ainda.</p>
               )}
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
               <h2 className="font-medium">Comodidades</h2>
-              <p className="text-sm text-zinc-400">Selecione as comodidades que seu espaco oferece.</p>
+              <p className="text-sm text-zinc-400">Selecione as comodidades que seu espaço oferece.</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {AMENIDADES_PADRAO.map((amenidade) => (
@@ -1180,7 +1150,7 @@ export default function ConfigurarPage() {
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
-              <h2 className="font-medium">Avaliacoes</h2>
+              <h2 className="font-medium">Avaliações</h2>
               <p className="text-sm text-zinc-400">Cadastre depoimentos para exibir na pagina publica.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1249,3 +1219,4 @@ export default function ConfigurarPage() {
     </main>
   )
 }
+

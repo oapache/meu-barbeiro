@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth, getRedirectByUserType } from '@/context/AuthContext'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -21,7 +22,8 @@ export default function LoginPage() {
 
     try {
       const result = await login(email, password, rememberSession)
-      router.push(getRedirectByUserType(result.usuario))
+      const redirect = searchParams.get('redirect')
+      router.push(redirect || getRedirectByUserType(result.usuario))
     } catch (err) {
       setError(err.message || 'Erro ao fazer login')
     } finally {
@@ -34,8 +36,8 @@ export default function LoginPage() {
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.jpg" alt="Meu Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
-            <span className="text-lg font-bold text-white">Meu Barbeiro</span>
+            <img src="/logo.jpg" alt="Sou Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
+            <span className="text-lg font-bold text-white">Sou Barbeiro</span>
           </Link>
           <nav className="flex gap-6">
             <Link href="/" className="text-sm font-medium text-zinc-300 hover:text-white transition">
@@ -57,7 +59,7 @@ export default function LoginPage() {
             <p className="text-zinc-400 text-sm uppercase tracking-wider">Acesso rápido</p>
             <h1 className="text-4xl font-bold mt-4 leading-tight">
               Bem-vindo de volta ao
-              <span className="block text-zinc-300">Meu Barbeiro</span>
+              <span className="block text-zinc-300">Sou Barbeiro</span>
             </h1>
             <p className="text-zinc-400 mt-4 max-w-md">
               Entre para acompanhar seus agendamentos, buscar novas barbearias e manter seu perfil sempre atualizado.
@@ -65,11 +67,11 @@ export default function LoginPage() {
             <div className="mt-8 grid grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-4">
                 <p className="text-zinc-500">Busca inteligente</p>
-                <p className="text-white font-semibold mt-1">Barbearias perto de voce</p>
+                <p className="text-white font-semibold mt-1">Barbearias perto de você</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-4">
                 <p className="text-zinc-500">Agendamento</p>
-                <p className="text-white font-semibold mt-1">Escolha data e horario</p>
+                <p className="text-white font-semibold mt-1">Escolha data e horário</p>
               </div>
             </div>
           </aside>
@@ -79,11 +81,11 @@ export default function LoginPage() {
               <Link href="/">
                 <img 
                   src="/logo.jpg" 
-                  alt="Meu Barbeiro" 
+                  alt="Sou Barbeiro" 
                   className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-white"
                 />
               </Link>
-              <h2 className="text-2xl font-bold text-white">Meu Barbeiro</h2>
+              <h2 className="text-2xl font-bold text-white">Sou Barbeiro</h2>
               <p className="text-zinc-400">Faça seu login</p>
             </div>
 

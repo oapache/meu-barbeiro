@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
-import { User, Calendar, Star, LogOut, Clock } from 'lucide-react'
+import { User, Calendar, Star, LogOut, Clock, XCircle } from 'lucide-react'
 import ApiService from '@/services/api'
-import { listLocalAgendamentosByCliente } from '@/lib/agendamentos'
 
 type AgendaStatus = 'agendado' | 'concluido' | 'cancelado' | 'pendente'
 
@@ -38,11 +37,21 @@ type AuthState = {
   loading: boolean
 }
 
+const formatarDataBr = (dataISO: string) => {
+  const [ano, mes, dia] = String(dataISO || '').slice(0, 10).split('-')
+  if (!ano || !mes || !dia) return dataISO
+  return `${dia}/${mes}/${ano}`
+}
+
+const formatarHoraBr = (hora: string) => String(hora || '').slice(0, 5)
+
 export default function PerfilPage() {
   const { user, logout, isAuthenticated, loading: authLoading } = useAuth() as AuthState
   const [activeTab, setActiveTab] = useState('agendamentos')
   const [agendamentos, setAgendamentos] = useState<AgendaItem[]>([])
   const [agendaLoading, setAgendaLoading] = useState(true)
+  const [cancelandoId, setCancelandoId] = useState<string | null>(null)
+  const [erroAgenda, setErroAgenda] = useState('')
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -65,16 +74,12 @@ export default function PerfilPage() {
 
       setAgendaLoading(true)
 
-      const locais = listLocalAgendamentosByCliente(user.id)
-
       try {
         const apiResult = await ApiService.listAgendamentos({ cliente_id: user.id })
         const apiList = Array.isArray(apiResult?.agendamentos) ? apiResult.agendamentos : []
-        const merged = [...locais, ...apiList]
-        const unique = merged.filter((item, index, arr) => arr.findIndex((x) => String(x.id) === String(item.id)) === index)
-        setAgendamentos(unique)
+        setAgendamentos(apiList)
       } catch {
-        setAgendamentos(locais)
+        setAgendamentos([])
       } finally {
         setAgendaLoading(false)
       }
@@ -87,6 +92,26 @@ export default function PerfilPage() {
 
   const proximosAgendamentos = agendamentos.filter((item) => item.status === 'agendado' || item.status === 'pendente')
   const historicoAgendamentos = agendamentos.filter((item) => item.status === 'concluido' || item.status === 'cancelado')
+
+  const handleCancelarAgendamento = async (agenda: AgendaItem) => {
+    if (!confirm('Deseja realmente desmarcar este agendamento?')) return
+
+    const idStr = String(agenda.id)
+    setCancelandoId(idStr)
+    setErroAgenda('')
+
+    try {
+      await ApiService.cancelAgendamento(agenda.id)
+
+      setAgendamentos((prev) => prev.map((item) => (
+        String(item.id) === idStr ? { ...item, status: 'cancelado' } : item
+      )))
+    } catch {
+      setErroAgenda('Não foi possível desmarcar o agendamento agora.')
+    } finally {
+      setCancelandoId(null)
+    }
+  }
 
   const handleLogout = () => {
     logout()
@@ -108,8 +133,8 @@ export default function PerfilPage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2">
-              <img src="/logo.jpg" alt="Meu Barbeiro" className="w-9 h-9 rounded-full object-cover border border-white/20" />
-              <span className="text-base font-bold">Meu Barbeiro</span>
+              <img src="/logo.jpg" alt="Sou Barbeiro" className="w-9 h-9 rounded-full object-cover border border-white/20" />
+              <span className="text-base font-bold">Sou Barbeiro</span>
             </Link>
           </div>
 
@@ -197,6 +222,12 @@ export default function PerfilPage() {
             </div>
 
             <div className="p-5 md:p-6">
+              {erroAgenda && (
+                <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                  {erroAgenda}
+                </div>
+              )}
+
               {agendaLoading && (
                 <div className="text-sm text-zinc-400">Carregando agendamentos...</div>
               )}
@@ -217,20 +248,35 @@ export default function PerfilPage() {
                           <p className="text-sm text-zinc-400">{agenda.servico_nome || agenda.servico || agenda.observacoes || 'Serviço agendado'}</p>
                         </div>
                         <span className={`px-2 py-1 rounded-full text-xs ${
-                          agenda.status === 'agendado' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
+                          agenda.status === 'agendado'
+                            ? 'bg-blue-500/20 text-blue-400'
+                            : agenda.status === 'pendente'
+                              ? 'bg-yellow-500/20 text-yellow-300'
+                              : 'bg-green-500/20 text-green-400'
                         }`}>
-                          {agenda.status === 'agendado' ? 'Agendado' : 'Concluído'}
+                          {agenda.status === 'agendado' ? 'Agendado' : agenda.status === 'pendente' ? 'Pendente' : 'Concluído'}
                         </span>
                       </div>
                       <div className="flex items-center gap-5 text-sm text-zinc-400">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
-                          {new Date(agenda.data).toLocaleDateString('pt-BR')}
+                          {formatarDataBr(agenda.data)}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          {agenda.hora}
+                          {formatarHoraBr(agenda.hora)}
                         </span>
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <button
+                          onClick={() => handleCancelarAgendamento(agenda)}
+                          disabled={cancelandoId === String(agenda.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-xs text-red-400 hover:bg-red-500/10 transition disabled:opacity-60"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          {cancelandoId === String(agenda.id) ? 'Desmarcando...' : 'Desmarcar'}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -249,10 +295,10 @@ export default function PerfilPage() {
                     <div key={item.id} className="bg-black/30 rounded-xl p-4 border border-white/5 flex justify-between items-center">
                       <div>
                         <p className="font-medium">{item.servico_nome || item.servico || item.observacoes || 'Serviço'}</p>
-                        <p className="text-sm text-zinc-400">{new Date(item.data).toLocaleDateString('pt-BR')}</p>
+                        <p className="text-sm text-zinc-400">{formatarDataBr(item.data)}</p>
                       </div>
                       <span className={`text-xs font-medium px-2 py-1 rounded-full ${item.status === 'cancelado' ? 'text-red-400 bg-red-500/20' : 'text-green-400 bg-green-500/20'}`}>
-                        {item.status === 'cancelado' ? 'Cancelado' : 'Concluído'}
+                        {item.status === 'cancelado' ? 'DESMARCADO' : 'CONCLUIDO'}
                       </span>
                     </div>
                   ))}
@@ -281,3 +327,4 @@ export default function PerfilPage() {
     </main>
   )
 }
+
