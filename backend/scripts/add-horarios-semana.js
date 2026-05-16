@@ -1,17 +1,12 @@
 require('dotenv').config();
-const { Pool } = require('pg');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+const pool = require('../src/config/database');
 
 async function migrate() {
   const client = await pool.connect();
   try {
     await client.query(`
       ALTER TABLE barbearias
-      ADD COLUMN IF NOT EXISTS horarios_semana JSONB
+      ADD COLUMN IF NOT EXISTS horarios_semana JSON
     `);
     console.log('Coluna horarios_semana adicionada com sucesso.');
   } catch (error) {

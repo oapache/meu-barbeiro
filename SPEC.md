@@ -1,4 +1,4 @@
-## Meu Barbeiro
+## O Corte Certo
 
 \[MVP - Versão 1.0\]
 

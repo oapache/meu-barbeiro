@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import AccessibilityShortcuts from '@/components/AccessibilityShortcuts'
 
 type Servico = {
   id: string
@@ -56,6 +57,17 @@ const formatarDataBr = (dataISO: string) => {
   return `${dia}/${mes}/${ano}`
 }
 
+const obterMinutosHora = (hora: string) => {
+  const [h, m] = String(hora || '').split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return -1
+  return h * 60 + m
+}
+
+const ehHoje = (dataISO: string) => {
+  if (!dataISO) return false
+  return formatarDataLocalISO(new Date()) === dataISO
+}
+
 const gerarHorariosIntervalo = (inicio: string, fim: string, intervaloMinutos = 30) => {
   const [hInicio, mInicio] = inicio.split(':').map(Number)
   const [hFim, mFim] = fim.split(':').map(Number)
@@ -85,6 +97,40 @@ const normalizarHoraCurta = (valor: unknown) => {
   const texto = String(valor || '').trim().slice(0, 5)
   return /^\d{2}:\d{2}$/.test(texto) ? texto : ''
 }
+
+const parseArraySafe = (value: unknown): any[] => {
+  if (Array.isArray(value)) return value
+
+  let current = value
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (typeof current !== 'string') break
+
+    const trimmed = current.trim()
+    if (!trimmed) return []
+
+    try {
+      current = JSON.parse(trimmed)
+    } catch {
+      return []
+    }
+
+    if (Array.isArray(current)) return current
+  }
+
+  return Array.isArray(current) ? current : []
+}
+
+const normalizarBoolean = (value: unknown) => value === true || value === 1 || ['1', 'true', 'sim', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
+
+const normalizarHorariosSemana = (value: unknown): HorarioSemanaItem[] =>
+  parseArraySafe(value)
+    .map((dia: any) => ({
+      key: String(dia?.key || '').trim().toLowerCase(),
+      fechado: normalizarBoolean(dia?.fechado),
+      abertura: normalizarHoraCurta(dia?.abertura),
+      fechamento: normalizarHoraCurta(dia?.fechamento),
+    }))
+    .filter((dia) => dia.key)
 
 const obterFaixaDoDia = (
   dataISO: string,
@@ -156,8 +202,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
           setAberturaPadrao(abertura)
           setFechamentoPadrao(fechamento)
 
-          const semana = Array.isArray(barbeariaApi?.horarios_semana) ? barbeariaApi.horarios_semana : []
-          setHorariosSemana(semana)
+          setHorariosSemana(normalizarHorariosSemana(barbeariaApi?.horarios_semana))
         } catch {
           // Mantem fallback local.
         }
@@ -242,7 +287,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
   // Gerar datas dos próximos 14 dias
   const datas = useMemo(() => {
     const dias: DataOption[] = []
-    for (let i = 1; i <= 14; i++) {
+    for (let i = 0; i < 14; i++) {
       const date = new Date()
       date.setDate(date.getDate() + i)
       if (date.getDay() !== 0) { // Não domingo
@@ -296,15 +341,10 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
       }
 
       try {
-        const resposta = await ApiService.listAgendamentos({
-          barbearia_id: String(barbearia.id),
-          data: dataSelecionada,
-        })
-
-        const listaApi = Array.isArray(resposta?.agendamentos) ? resposta.agendamentos : []
+        const resposta = await ApiService.getAgendamentoDisponibilidade(String(barbearia.id), dataSelecionada)
+        const listaApi = Array.isArray(resposta?.horarios_ocupados) ? resposta.horarios_ocupados : []
         const remotos = listaApi
-          .filter((item: any) => String(item?.status || '') !== 'cancelado')
-          .map((item: any) => normalizarHoraCurta(item?.hora))
+          .map((item: any) => normalizarHoraCurta(item))
           .filter(Boolean) as string[]
 
         setHorasOcupadas(Array.from(new Set(remotos)).sort((a, b) => a.localeCompare(b)))
@@ -321,7 +361,14 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
     if (!faixa) return []
     const base = gerarHorariosIntervalo(faixa.abertura, faixa.fechamento, 30)
     const ocupadasSet = new Set(horasOcupadas)
-    return base.filter((hora) => !ocupadasSet.has(hora))
+    const agora = new Date()
+    const minutosAtuais = agora.getHours() * 60 + agora.getMinutes()
+
+    return base.filter((hora) => {
+      if (ocupadasSet.has(hora)) return false
+      if (!ehHoje(dataSelecionada)) return true
+      return obterMinutosHora(hora) > minutosAtuais
+    })
   }, [dataSelecionada, horariosSemana, aberturaPadrao, fechamentoPadrao, horasOcupadas])
 
   useEffect(() => {
@@ -355,6 +402,8 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
       await ApiService.createAgendamento({
         barbearia_id: payload.barbearia_id,
         servico_id: payload.servico_id,
+        servico_nome: payload.servico_nome,
+        servico_preco: payload.servico_preco,
         cliente_id: payload.cliente_id,
         barbeiro_id: payload.barbeiro_id,
         data: payload.data,
@@ -657,6 +706,8 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
           </>
         )}
       </div>
+
+      <AccessibilityShortcuts />
     </main>
   )
 }

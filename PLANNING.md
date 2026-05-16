@@ -1,4 +1,4 @@
-# Meu Barbeiro - Planejamento Completo
+# O Corte Certo - Planejamento Completo
 
 ## 1. Stack Tecnológica
 
@@ -32,7 +32,7 @@
 └───────────────┘   └───────────────┘
 ```
 
-## 3. Diferenciais do Meu Barbeiro
+## 3. Diferenciais da plataforma O Corte Certo
 
 - ✅ Versão **FREE** para 1 barbeiro
 - ✅ Foco em **WhatsApp** (brasileiro ama WhatsApp)

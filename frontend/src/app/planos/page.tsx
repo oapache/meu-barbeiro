@@ -8,8 +8,7 @@ const PLANOS = [
     key: 'professionals_1',
     nome: '1 Profissional',
     mensal: 'R$ 34,90/mês',
-    primeiroMes: 'R$ 25,00',
-    economia: 'Economia de R$ 9,90 no 1º mês',
+    aposTrial: 'Após 7 dias grátis: R$ 34,90/mês',
     destaque: '',
     principal: false,
   },
@@ -17,8 +16,7 @@ const PLANOS = [
     key: 'professionals_2_5',
     nome: '2 a 5 Profissionais',
     mensal: 'R$ 69,90/mês',
-    primeiroMes: 'R$ 49,00',
-    economia: 'Economia de R$ 20,90 no 1º mês',
+    aposTrial: 'Após 7 dias grátis: R$ 69,90/mês',
     destaque: 'Mais escolhido',
     principal: true,
   },
@@ -26,8 +24,7 @@ const PLANOS = [
     key: 'professionals_6_15',
     nome: '6 a 15 Profissionais',
     mensal: 'R$ 119,90/mês',
-    primeiroMes: 'R$ 89,00',
-    economia: 'Economia de R$ 30,90 no 1º mês',
+    aposTrial: 'Após 7 dias grátis: R$ 119,90/mês',
     destaque: '',
     principal: false,
   },
@@ -35,8 +32,7 @@ const PLANOS = [
     key: 'professionals_15_plus',
     nome: '+15 Profissionais',
     mensal: 'R$ 159,90/mês',
-    primeiroMes: 'R$ 129,00',
-    economia: 'Economia de R$ 30,90 no 1º mês',
+    aposTrial: 'Após 7 dias grátis: R$ 159,90/mês',
     destaque: '',
     principal: false,
   },
@@ -54,8 +50,8 @@ export default function PlanosPublicPage() {
       <header className="sticky top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.jpg" alt="Sou Barbeiro" className="w-12 h-12 rounded-full object-cover border border-white" />
-            <span className="text-lg font-bold text-white">Sou Barbeiro</span>
+            <img src="/logo.png" alt="O Corte Certo" className="w-12 h-12 rounded-full object-cover border border-white" />
+            <span className="text-lg font-bold text-white">O Corte Certo</span>
           </Link>
           <nav className="flex gap-6">
             <Link href="/" className="text-sm font-medium text-zinc-300 hover:text-white transition">Início</Link>
@@ -88,8 +84,7 @@ export default function PlanosPublicPage() {
 
                 <h2 className="text-xl font-semibold mb-2">{plano.nome}</h2>
                 <p className={`${plano.principal ? 'text-zinc-700' : 'text-zinc-300'} text-sm mb-1`}>{plano.mensal}</p>
-                <p className={`text-sm font-medium ${plano.principal ? 'text-emerald-700' : 'text-emerald-300'} mb-1`}>1º mês: {plano.primeiroMes}</p>
-                <p className={`text-xs ${plano.principal ? 'text-zinc-600' : 'text-zinc-400'} mb-5`}>{plano.economia}</p>
+                <p className={`text-sm font-medium ${plano.principal ? 'text-emerald-700' : 'text-emerald-300'} mb-5`}>{plano.aposTrial}</p>
 
                 <ul className={`space-y-2 mb-6 text-sm ${plano.principal ? 'text-zinc-700' : 'text-zinc-300'}`}>
                   {RECURSOS_COMUNS.map((item) => (

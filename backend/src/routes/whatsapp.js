@@ -23,6 +23,10 @@ router.post('/gerar-link', (req, res) => {
     // Gerar template automaticamente se especificado
     if (tipo === 'agendamento' && req.body.dados) {
       mensagemFinal = WhatsAppService.templateAgendamento(req.body.dados);
+    } else if (tipo === 'agendamento_cliente' && req.body.dados) {
+      mensagemFinal = WhatsAppService.templateAgendamentoCliente(req.body.dados);
+    } else if (tipo === 'agendamento_barbearia' && req.body.dados) {
+      mensagemFinal = WhatsAppService.templateAgendamentoBarbearia(req.body.dados);
     } else if (tipo === 'lembrete' && req.body.dados) {
       mensagemFinal = WhatsAppService.templateLembrete(req.body.dados);
     } else if (tipo === 'confirmacao' && req.body.dados) {

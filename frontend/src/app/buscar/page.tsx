@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Search, MapPin, Star } from 'lucide-react'
+import { ArrowRight, MapPin, Menu, Search, Star, X } from 'lucide-react'
 import ApiService from '@/services/api'
 
 type BarbeariaResumo = {
@@ -47,6 +47,7 @@ const calcularDistanciaKm = (origem: LocalizacaoCliente, destino: { latitude: nu
 }
 
 export default function BuscarPage() {
+  const [menuAberto, setMenuAberto] = useState(false)
   const [busca, setBusca] = useState('')
   const [barbearias, setBarbearias] = useState<BarbeariaResumo[]>([])
   const [carregandoBarbearias, setCarregandoBarbearias] = useState(true)
@@ -55,6 +56,18 @@ export default function BuscarPage() {
   const [localizacaoCliente, setLocalizacaoCliente] = useState<LocalizacaoCliente | null>(null)
   const [statusLocalizacao, setStatusLocalizacao] = useState<string>('')
   const [solicitandoLocalizacao, setSolicitandoLocalizacao] = useState(false)
+
+  useEffect(() => {
+    if (menuAberto) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [menuAberto])
 
   useEffect(() => {
     const carregarBarbearias = async () => {
@@ -88,6 +101,18 @@ export default function BuscarPage() {
 
     carregarBarbearias()
   }, [])
+
+  const primaryNavLinks = [
+    { href: '/#recursos', label: 'Recursos' },
+    { href: '/#planos', label: 'Planos' },
+  ]
+
+  const headerActions = [
+    { href: '/buscar', label: 'Buscar' },
+    { href: '/login', label: 'Entrar' },
+  ]
+
+  const mobileMenuLinks = [...primaryNavLinks, ...headerActions]
 
   const solicitarLocalizacao = () => {
     if (!navigator.geolocation) {
@@ -149,46 +174,147 @@ export default function BuscarPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <Link href="/" className="flex items-center gap-3">
-              <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-              <span className="text-lg font-bold">Sou Barbeiro</span>
-            </Link>
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-black/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6">
+          <Link
+            href="/"
+            className="group flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] py-2 pl-2 pr-4 transition-all duration-200 hover:border-emerald-500/30 hover:bg-white/[0.06]"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/30 bg-black shadow-lg shadow-black/40 transition-all duration-200 group-hover:border-emerald-400/50">
+              <img src="/logo.png" alt="" className="h-10 w-10 rounded-full object-cover" />
+            </span>
+            <span className="leading-none">
+              <span className="block text-sm font-black text-white md:text-base">O Corte Certo</span>
+              <span className="mt-1 hidden text-[10px] uppercase tracking-[0.18em] text-emerald-300/70 sm:block">
+                Agenda para barbearias
+              </span>
+            </span>
+          </Link>
 
-            <nav className="flex items-center gap-4 md:gap-6 text-sm">
-              <Link href="/" className="text-zinc-300 hover:text-white transition">
-                Início
+          <nav
+            aria-label="Navegação principal"
+            className="header-primary-nav hidden items-center gap-1 rounded-full border border-white/10 bg-zinc-950/75 p-1 shadow-2xl shadow-black/30 md:flex"
+          >
+            {primaryNavLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="rounded-full px-4 py-2 text-sm font-medium text-zinc-300 transition-all duration-200 hover:bg-white/10 hover:text-white"
+              >
+                {link.label}
               </Link>
-              <Link href="/buscar" className="text-white font-medium">
-                Buscar
+            ))}
+          </nav>
+
+          <div className="hidden items-center gap-2 md:flex">
+            {headerActions.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-white/10 hover:text-white ${
+                  link.href === '/buscar' ? 'bg-white/10 text-white' : 'text-zinc-300'
+                }`}
+              >
+                {link.label}
               </Link>
-              <Link href="/perfil" className="text-zinc-300 hover:text-white transition">
-                Perfil
-              </Link>
-            </nav>
+            ))}
+
+            <Link
+              href="/cadastro"
+              className="group inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-bold text-black transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-200 hover:shadow-xl hover:shadow-white/10 active:scale-[0.98]"
+            >
+              Começar grátis
+              <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+            </Link>
           </div>
-          
-          {/* Busca */}
-          <div className="relative">
-            <input 
-              type="text" 
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar barbearia..." 
-              className="w-full px-5 py-3 pl-12 rounded-full bg-zinc-900 border border-zinc-700 focus:border-white focus:outline-none"
-              autoFocus
-            />
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+
+          <button
+            onClick={() => setMenuAberto(!menuAberto)}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white transition-all duration-200 active:scale-95 md:hidden"
+            aria-label={menuAberto ? 'Fechar menu' : 'Abrir menu'}
+            aria-expanded={menuAberto}
+          >
+            {menuAberto ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
+
+        <div className="search-header-toolbar border-t border-white/10 bg-zinc-950/80 px-4 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-7xl gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar barbearia..."
+                className="w-full rounded-2xl border border-white/10 bg-black/45 py-3 pl-11 pr-4 text-sm text-white outline-none transition-all duration-200 placeholder:text-zinc-500 focus:border-emerald-400/50 focus:bg-black/70 sm:pl-12 sm:text-base"
+                autoFocus
+              />
+              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 sm:h-5 sm:w-5" />
+            </div>
+
+            <button
+              onClick={solicitarLocalizacao}
+              disabled={solicitandoLocalizacao}
+              className="inline-flex h-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-zinc-300 transition-all duration-200 hover:border-emerald-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 lg:hidden"
+              title="Usar localização"
+            >
+              <MapPin className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Resultados */}
-      <section className="pt-36 px-4 pb-8">
-        <div className="max-w-6xl mx-auto grid lg:grid-cols-12 gap-6">
+      <div
+        className={`fixed inset-0 z-40 transition-all duration-300 md:hidden ${
+          menuAberto ? 'pointer-events-auto opacity-100 visible' : 'pointer-events-none opacity-0 invisible'
+        }`}
+        onClick={() => setMenuAberto(false)}
+      >
+        <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
+
+        <div
+          className={`mobile-menu-panel absolute left-4 right-4 top-40 rounded-[28px] border border-white/10 bg-zinc-950/95 p-4 shadow-[0_28px_80px_rgba(0,0,0,0.55)] transition-all duration-300 ${
+            menuAberto ? 'translate-y-0 scale-100' : '-translate-y-4 scale-[0.98]'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-300">Menu</p>
+              <p className="mt-1 text-sm text-zinc-400">Operação conectada</p>
+            </div>
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-100">
+              Online
+            </span>
+          </div>
+
+          <nav className="grid gap-2" aria-label="Menu mobile">
+            {mobileMenuLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMenuAberto(false)}
+                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-white transition-all duration-200 active:scale-[0.99]"
+              >
+                {link.label}
+                <ArrowRight className="h-4 w-4 text-zinc-500" />
+              </Link>
+            ))}
+          </nav>
+
+          <Link
+            href="/cadastro"
+            onClick={() => setMenuAberto(false)}
+            className="mt-4 flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3.5 text-sm font-bold text-black transition-all duration-200 active:scale-[0.98]"
+          >
+            Começar grátis
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+
+      <section className="pt-40 sm:pt-44 px-4 pb-8">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-12 gap-4 sm:gap-6">
           <aside className="hidden lg:block lg:col-span-3">
             <div className="sticky top-36 rounded-2xl border border-white/10 bg-zinc-900/70 p-5">
               <p className="text-zinc-400 text-sm uppercase tracking-wider">Busca</p>
@@ -223,34 +349,43 @@ export default function BuscarPage() {
           </aside>
 
           <div className="lg:col-span-9">
-            <h2 className="text-lg font-medium mb-4 lg:hidden">
-              {busca ? `Resultados para "${busca}"` : 'Próximos de você'}
-            </h2>
+            <div className="flex items-center justify-between mb-3 lg:hidden">
+              <h2 className="text-base font-medium">
+                {busca ? `"${busca}"` : 'Próximos de você'}
+              </h2>
+              <span className="text-xs text-zinc-400">
+                {barbeariasComDistancia.length} resultado{barbeariasComDistancia.length !== 1 ? 's' : ''}
+              </span>
+            </div>
 
             {!localizacaoCliente && (
-              <div className="mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
-                Ative sua localização para encontrar barbearias realmente próximas de você.
+              <div className="mb-3 sm:mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-yellow-100">
+                Ative sua localização para encontrar barbearias próximas.
               </div>
             )}
 
+            {statusLocalizacao && (
+              <p className="lg:hidden mb-3 text-xs text-zinc-400">{statusLocalizacao}</p>
+            )}
+
             {erroBarbearias && (
-              <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <div className="mb-3 sm:mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm text-red-100">
                 {erroBarbearias}
               </div>
             )}
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               {carregandoBarbearias && (
-                <div className="md:col-span-2 text-center py-12 text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-xl">
+                <div className="sm:col-span-2 text-center py-10 sm:py-12 text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-xl text-sm">
                   Carregando barbearias...
                 </div>
               )}
 
               {barbeariasComDistancia.map((barbearia) => (
                 <Link key={barbearia.id} href={`/barberia/${String(barbearia.id)}`}>
-                  <div className="h-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition">
-                    <div className="flex items-start gap-4">
-                      <div className="w-16 h-16 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 border border-white/10 overflow-hidden">
+                  <div className="h-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 sm:p-4 hover:border-zinc-700 transition active:scale-[0.98]">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 border border-white/10 overflow-hidden">
                         {barbearia.logoUrl && !logosComErro[String(barbearia.id)] ? (
                           <img
                             src={barbearia.logoUrl}
@@ -264,28 +399,28 @@ export default function BuscarPage() {
                           <img
                             src="/fallback-barbershop-mono.svg"
                             alt="Logo padrão"
-                            className="w-9 h-9 opacity-90"
+                            className="w-7 h-7 sm:w-9 sm:h-9 opacity-90"
                           />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-semibold truncate">{barbearia.nome}</h3>
-                          <span className={`text-[10px] px-2 py-1 rounded-full ${barbearia.aberto ? 'bg-green-500/20 text-green-400' : 'bg-zinc-700 text-zinc-300'}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-semibold text-sm sm:text-base truncate">{barbearia.nome}</h3>
+                          <span className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full shrink-0 ${barbearia.aberto ? 'bg-green-500/20 text-green-400' : 'bg-zinc-700 text-zinc-300'}`}>
                             {barbearia.aberto ? 'Aberta' : 'Fechada'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-zinc-400 mt-1">
-                          <MapPin className="w-4 h-4" />
-                          <span className="truncate">{barbearia.endereco} • {barbearia.distanciaLabel}</span>
+                        <div className="flex items-center gap-1.5 text-xs sm:text-sm text-zinc-400 mt-1">
+                          <MapPin className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                          <span className="truncate">{barbearia.distanciaLabel}</span>
                         </div>
-                        <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center justify-between mt-2 sm:mt-3">
                           <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                            <span className="text-sm">{barbearia.nota}</span>
-                            <span className="text-xs text-zinc-500">• {barbearia.categoria}</span>
+                            <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-500 fill-yellow-500" />
+                            <span className="text-xs sm:text-sm">{barbearia.nota}</span>
+                            <span className="hidden sm:inline text-xs text-zinc-500">• {barbearia.categoria}</span>
                           </div>
-                          <span className="px-3 py-1.5 bg-white text-black rounded-full text-xs font-medium">
+                          <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-white text-black rounded-full text-[10px] sm:text-xs font-medium">
                             Agendar
                           </span>
                         </div>
@@ -296,16 +431,16 @@ export default function BuscarPage() {
               ))}
 
               {!carregandoBarbearias && barbeariasComDistancia.length === 0 && (
-                <div className="md:col-span-2 text-center py-12 text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-xl">
-                  <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhuma barbearia encontrada</p>
+                <div className="sm:col-span-2 text-center py-10 sm:py-12 text-zinc-500 bg-zinc-900 border border-zinc-800 rounded-xl">
+                  <Search className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 sm:mb-4 opacity-50" />
+                  <p className="text-sm">Nenhuma barbearia encontrada</p>
                 </div>
               )}
             </div>
           </div>
         </div>
       </section>
+
     </main>
   )
 }
-

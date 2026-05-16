@@ -3,7 +3,7 @@ import './globals.css'
 import Providers from './providers'
 
 export const metadata: Metadata = {
-  title: 'Sou Barbeiro',
+  title: 'O Corte Certo',
   description: 'App de barbearia - Agendamento online',
   viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
   themeColor: '#000000',
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Sou Barbeiro'
+    title: 'O Corte Certo'
   }
 }
 

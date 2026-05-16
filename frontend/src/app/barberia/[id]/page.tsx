@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
+import { getServiceImageByName } from '@/lib/serviceCatalog'
 import { MapPin, Phone, Clock, Star, Calendar, Check, ArrowLeft } from 'lucide-react'
+import AccessibilityShortcuts from '@/components/AccessibilityShortcuts'
 
 type TabKey = 'services' | 'professionals' | 'reviews'
 
@@ -13,6 +15,7 @@ type Service = {
   name: string
   price: number
   durationMinutes: number
+  imageUrl?: string
 }
 
 type Professional = {
@@ -37,6 +40,12 @@ type WeeklyScheduleItem = {
   fechado: boolean
   abertura: string
   fechamento: string
+  intervalos: WeeklyScheduleInterval[]
+}
+
+type WeeklyScheduleInterval = {
+  abertura: string
+  fechamento: string
 }
 
 const defaultShop = {
@@ -45,7 +54,7 @@ const defaultShop = {
   rating: 0,
   reviewsCount: 0,
   bannerImage: 'https://images.unsplash.com/photo-1622287162716-f311baa1a2b8?auto=format&fit=crop&w=1600&q=80',
-  logoImage: '/logo.jpg',
+  logoImage: '/logo.png',
   tagline: 'Conheça os serviços e profissionais desta barbearia.',
   description: 'Acompanhe as informações atualizadas da barbearia.',
   address: 'Endereço não informado',
@@ -87,8 +96,19 @@ function ratingStars(rating: number) {
 }
 
 const DAY_KEY_BY_INDEX = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
+const DAY_LABEL_BY_KEY: Record<string, string> = {
+  domingo: 'Domingo',
+  segunda: 'Segunda-Feira',
+  terca: 'Terça-Feira',
+  quarta: 'Quarta-Feira',
+  quinta: 'Quinta-Feira',
+  sexta: 'Sexta-Feira',
+  sabado: 'Sábado',
+}
 
 const horarioCurto = (valor: string) => (valor || '').slice(0, 5)
+
+const horaValida = (valor: unknown) => /^\d{2}:\d{2}/.test(String(valor || '').trim())
 
 const horarioParaMinutos = (valor: string) => {
   const [hora, minuto] = String(valor || '').split(':')
@@ -98,12 +118,72 @@ const horarioParaMinutos = (valor: string) => {
   return (h * 60) + m
 }
 
-const serviceImageByName = (name: string) => {
-  const normalized = name.toLowerCase()
-  if (normalized.includes('sobrancelha')) return '/service-icons/cabelo-sobrancelha.png'
-  if (normalized.includes('cabelo')) return '/service-icons/cabelo.png'
-  return '/service-icons/cabelo.png'
+const estaDentroDoExpediente = (dia: WeeklyScheduleItem, agora: Date) => {
+  const minutosAgora = (agora.getHours() * 60) + agora.getMinutes()
+
+  return dia.intervalos.some((intervalo) => {
+    const aberturaMin = horarioParaMinutos(intervalo.abertura)
+    const fechamentoMin = horarioParaMinutos(intervalo.fechamento)
+    if (aberturaMin === null || fechamentoMin === null) return false
+    return minutosAgora >= aberturaMin && minutosAgora < fechamentoMin
+  })
 }
+
+const parseArraySafe = (value: unknown): any[] => {
+  if (Array.isArray(value)) return value
+
+  let current = value
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (typeof current !== 'string') break
+
+    const trimmed = current.trim()
+    if (!trimmed) return []
+
+    try {
+      current = JSON.parse(trimmed)
+    } catch {
+      return []
+    }
+
+    if (Array.isArray(current)) return current
+  }
+
+  return Array.isArray(current) ? current : []
+}
+
+const normalizarBoolean = (value: unknown) => value === true || value === 1 || ['1', 'true', 'sim', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
+
+const normalizarIntervalosDia = (dia: any): WeeklyScheduleInterval[] => {
+  const intervalos = parseArraySafe(dia?.intervalos || dia?.periodos || dia?.horarios)
+    .map((intervalo) => ({
+      abertura: String(intervalo?.abertura || intervalo?.inicio || '').trim(),
+      fechamento: String(intervalo?.fechamento || intervalo?.fim || '').trim(),
+    }))
+    .filter((intervalo) => horaValida(intervalo.abertura) && horaValida(intervalo.fechamento))
+
+  if (intervalos.length > 0) return intervalos
+
+  const abertura = String(dia?.abertura || '').trim()
+  const fechamento = String(dia?.fechamento || '').trim()
+  return horaValida(abertura) && horaValida(fechamento) ? [{ abertura, fechamento }] : []
+}
+
+const normalizarHorariosSemana = (value: unknown): WeeklyScheduleItem[] =>
+  parseArraySafe(value)
+    .map((dia: any) => {
+      const key = String(dia?.key || '').trim().toLowerCase()
+      const label = DAY_LABEL_BY_KEY[key] || String(dia?.label || '').trim()
+
+      return {
+        key,
+        label,
+        fechado: normalizarBoolean(dia?.fechado),
+        abertura: String(dia?.abertura || '').trim(),
+        fechamento: String(dia?.fechamento || '').trim(),
+        intervalos: normalizarIntervalosDia(dia),
+      }
+    })
+    .filter((dia) => dia.key || dia.label)
 
 const initialsFromName = (name: string) => {
   const clean = name.trim()
@@ -141,6 +221,26 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
   const [loadError, setLoadError] = useState<string | null>(null)
   const [logoError, setLogoError] = useState(false)
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklyScheduleItem[]>([])
+  const [clockTick, setClockTick] = useState(0)
+  const diasAtendimento = useMemo(
+    () => weeklySchedule.filter((dia) => !dia.fechado && dia.intervalos.length > 0),
+    [weeklySchedule]
+  )
+  const agoraReferencia = useMemo(() => new Date(), [clockTick])
+
+  useEffect(() => {
+    if (weeklySchedule.length === 0) return
+
+    const timer = window.setInterval(() => {
+      setClockTick((current) => current + 1)
+    }, 60000)
+
+    return () => window.clearInterval(timer)
+  }, [weeklySchedule.length])
+
+  useEffect(() => {
+    setLogoError(false)
+  }, [shop.logoImage])
 
   useEffect(() => {
     const carregarBarbearia = async () => {
@@ -153,6 +253,8 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
         if (barbearia) {
           const { district, city } = extrairCidadeUF(barbearia.endereco || '')
+          const notaPublica = Number(barbearia.nota_media ?? barbearia.nota ?? 0)
+          const totalAvaliacoes = Number(barbearia.total_avaliacoes || 0)
 
           setShop((prev) => ({
             ...prev,
@@ -168,20 +270,11 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
               `Horário principal: ${barbearia.horario_abertura || '09:00'} - ${barbearia.horario_fechamento || '20:00'}`,
             ],
             tagline: `Atendimento profissional na ${barbearia.nome || 'barbearia'}.`,
+            rating: Number.isFinite(notaPublica) ? notaPublica : prev.rating,
+            reviewsCount: Number.isFinite(totalAvaliacoes) ? totalAvaliacoes : prev.reviewsCount,
           }))
 
-          const horariosBanco = barbearia.horarios_semana
-          if (Array.isArray(horariosBanco) && horariosBanco.length > 0) {
-            setWeeklySchedule(
-              horariosBanco.map((dia: any) => ({
-                key: String(dia?.key || ''),
-                label: String(dia?.label || ''),
-                fechado: Boolean(dia?.fechado),
-                abertura: String(dia?.abertura || ''),
-                fechamento: String(dia?.fechamento || ''),
-              }))
-            )
-          }
+          setWeeklySchedule(normalizarHorariosSemana(barbearia.horarios_semana))
         }
 
         try {
@@ -204,13 +297,11 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
               }))
             : []
 
-          const galleryImages = Array.isArray(detalhes?.galeria)
-            ? detalhes.galeria.filter((item: any) => typeof item === 'string')
-            : []
+          const galleryImages = parseArraySafe(detalhes?.galeria)
+            .filter((item: any) => typeof item === 'string')
 
-          const reviews = Array.isArray(detalhes?.avaliacoes)
+          const ratingEntries = Array.isArray(detalhes?.avaliacoes)
             ? detalhes.avaliacoes
-              .filter((r: any) => r?.autor && r?.comentario)
               .map((r: any) => ({
                 id: String(r.id || ''),
                 author: String(r.autor || ''),
@@ -218,10 +309,13 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                 comment: String(r.comentario || ''),
                 date: String(r.data || ''),
               }))
+              .filter((review) => review.rating >= 1 && review.rating <= 5)
             : []
 
-          const media = reviews.length > 0
-            ? reviews.reduce((acc, item) => acc + item.rating, 0) / reviews.length
+          const reviews = ratingEntries.filter((review) => review.author && review.comment)
+
+          const media = ratingEntries.length > 0
+            ? ratingEntries.reduce((acc, item) => acc + item.rating, 0) / ratingEntries.length
             : 0
 
           setShop((prev) => ({
@@ -231,8 +325,8 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             bannerImage: String(detalhes?.banner_url || prev.bannerImage),
             galleryImages,
             reviews,
-            reviewsCount: reviews.length,
-            rating: Number.isFinite(media) ? media : 0,
+            reviewsCount: ratingEntries.length > 0 ? ratingEntries.length : prev.reviewsCount,
+            rating: Number.isFinite(media) && media > 0 ? media : prev.rating,
           }))
         } catch {
           // Mantem os dados basicos da barbearia mesmo sem detalhes.
@@ -249,6 +343,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
               name: servico.nome,
               price: Number(servico.preco || 0),
               durationMinutes: Number(servico.duracao_minutos || 30),
+              imageUrl: String(servico.imagem_url || ''),
             })),
           }))
         } catch {
@@ -299,127 +394,128 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* Header */}
       <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/" className="flex items-center gap-3">
-              <img src="/logo.jpg" alt="Sou Barbeiro" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
-              <span className="text-lg font-bold text-white">Sou Barbeiro</span>
+        <div className="max-w-7xl mx-auto px-4 py-2.5 sm:py-3 flex justify-between items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Link href="/" className="flex items-center gap-2 sm:gap-3">
+              <img src="/logo.png" alt="O Corte Certo" className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white" />
+              <span className="text-sm sm:text-lg font-bold text-white hidden xs:inline">O Corte Certo</span>
             </Link>
             <div className="hidden md:block border-l border-zinc-700 pl-3 min-w-0">
               <span className="font-semibold truncate block">{shop.name}</span>
             </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-5 text-sm">
-            <Link href="/" className="text-zinc-300 hover:text-white transition">Início</Link>
-            <Link href="/buscar" className="text-white font-medium">Buscar</Link>
-          </nav>
-
-          <Link href="/buscar" className="flex items-center gap-2 text-zinc-300 hover:text-white">
-            <ArrowLeft className="w-5 h-5" />
+          <Link href="/buscar" className="flex items-center gap-1.5 sm:gap-2 text-zinc-300 hover:text-white text-sm">
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>Voltar</span>
           </Link>
         </div>
       </header>
 
-      {/* Banner */}
-      <section className="relative border-b border-white/10 pt-16">
-        <div className="h-64 w-full bg-cover bg-center md:h-80" style={{ backgroundImage: `url(${shop.bannerImage})` }}>
+      <section className="relative border-b border-white/10 pt-14 sm:pt-16">
+        <div className="h-40 sm:h-64 md:h-80 w-full bg-cover bg-center" style={{ backgroundImage: `url(${shop.bannerImage})` }}>
           <div className="h-full w-full bg-gradient-to-t from-black via-black/60 to-black/20" />
         </div>
 
-        <div className="mx-auto -mt-16 max-w-7xl px-4 pb-6 md:px-6">
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/95 p-5 backdrop-blur-sm md:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
+        <div className="mx-auto -mt-12 sm:-mt-16 max-w-7xl px-4 pb-4 sm:pb-6 md:px-6">
+          <div className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950/95 p-4 sm:p-5 md:p-6 backdrop-blur-sm">
+            <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3 sm:gap-4">
                 {!shop.logoImage || logoError ? (
-                  <ShopLogoFallback className="h-16 w-16 sm:h-20 sm:w-20" />
+                  <ShopLogoFallback className="h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20" />
                 ) : (
                   <img
                     src={shop.logoImage}
                     alt={shop.name}
                     onError={() => setLogoError(true)}
-                    className="h-16 w-16 rounded-xl border border-white/20 object-cover sm:h-20 sm:w-20"
+                    className="h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20 rounded-xl border border-white/20 object-cover"
                   />
                 )}
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Barbearia</p>
-                  <h1 className="text-2xl font-semibold text-white md:text-3xl">{shop.name}</h1>
-                  <p className="mt-1 text-sm text-zinc-300">{shop.tagline}</p>
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-zinc-400">Barbearia</p>
+                  <h1 className="text-lg sm:text-2xl md:text-3xl font-semibold text-white truncate">{shop.name}</h1>
+                  <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-zinc-300 line-clamp-1">{shop.tagline}</p>
                 </div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/50 px-4 py-3 text-sm">
-                <p className="font-medium text-white">{shop.rating.toFixed(1)} <span className="text-zinc-400">/ 5.0</span></p>
-                <p className="text-amber-400">{shop.rating > 0 ? ratingStars(shop.rating) : 'Sem notas'}</p>
-                <p className="text-zinc-400">{shop.reviewsCount} avaliações</p>
+              <div className="rounded-lg sm:rounded-xl border border-white/10 bg-black/50 px-3 sm:px-4 py-2 sm:py-3 text-sm flex sm:block items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium text-white">{shop.rating.toFixed(1)} <span className="text-zinc-400">/ 5.0</span></p>
+                  <p className="text-amber-400 text-xs sm:text-sm">{shop.rating > 0 ? ratingStars(shop.rating) : 'Sem notas'}</p>
+                </div>
+                <p className="text-zinc-400 text-xs sm:text-sm">{shop.reviewsCount} avaliações</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-6 md:px-6 lg:grid lg:grid-cols-[2fr_1fr] lg:gap-8 lg:pb-12">
+      <div className="mx-auto max-w-7xl px-4 pb-24 pt-4 sm:pt-6 md:px-6 lg:grid lg:grid-cols-[2fr_1fr] lg:gap-8 lg:pb-12">
         {/* Main Content */}
-        <section className="space-y-6">
-          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
-            <h2 className="text-lg font-semibold">Sobre a barbearia</h2>
-            <p className="mt-3 leading-relaxed text-zinc-300">{shop.description}</p>
+        <section className="space-y-4 sm:space-y-6">
+          <article className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950 p-4 sm:p-5 md:p-6">
+            <h2 className="text-base sm:text-lg font-semibold">Sobre a barbearia</h2>
+            <p className="mt-2 sm:mt-3 leading-relaxed text-zinc-300 text-sm sm:text-base">{shop.description}</p>
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
-            <h2 className="text-lg font-semibold">Galeria</h2>
+          <article className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950 p-4 sm:p-5 md:p-6">
+            <h2 className="text-base sm:text-lg font-semibold">Galeria</h2>
             {shop.galleryImages.length === 0 ? (
-              <p className="mt-3 text-sm text-zinc-400">Nenhuma imagem cadastrada na galeria.</p>
+              <p className="mt-2 sm:mt-3 text-sm text-zinc-400">Nenhuma imagem cadastrada na galeria.</p>
             ) : (
-              <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="mt-2 sm:mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 {shop.galleryImages.map((url) => (
                   <img
                     key={url}
                     src={url}
                     alt="Imagem da galeria"
-                    className="h-32 w-full rounded-xl object-cover border border-white/10"
+                    className="h-24 sm:h-32 w-full rounded-lg sm:rounded-xl object-cover border border-white/10"
                   />
                 ))}
               </div>
             )}
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
-            <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3">
+          <article className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950 p-4 sm:p-5 md:p-6">
+            <div className="mb-3 sm:mb-4 flex items-center gap-1.5 sm:gap-2 border-b border-white/10 pb-3 overflow-x-auto">
               {(['services', 'professionals', 'reviews'] as TabKey[]).map((tab) => (
-                <button key={tab} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${activeTab === tab ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'}`}>
+                <button key={tab} onClick={() => setActiveTab(tab)} className={`rounded-lg px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition whitespace-nowrap ${activeTab === tab ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'}`}>
                   {tab === 'services' ? 'Serviços' : tab === 'professionals' ? 'Profissionais' : 'Avaliações'}
                 </button>
               ))}
             </div>
 
             {activeTab === 'services' && (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {shop.services.length === 0 && (
-                  <div className="rounded-xl border border-white/10 bg-black/50 p-4 text-sm text-zinc-400">
+                  <div className="rounded-lg sm:rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4 text-sm text-zinc-400">
                     Nenhum serviço cadastrado ainda.
                   </div>
                 )}
                 {shop.services.map((service) => (
-                  <div key={service.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/50 p-4">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={serviceImageByName(service.name)}
-                        alt={service.name}
-                        className="w-12 h-12 rounded-lg object-cover border border-white/15"
-                      />
-                      <div>
-                      <p className="font-medium text-white">{service.name}</p>
-                      <p className="text-sm text-zinc-400">{service.durationMinutes} minutos</p>
+                  <div key={service.id} className="flex items-center justify-between rounded-lg sm:rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4 gap-3">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                      {getServiceImageByName(service.name, service.imageUrl) ? (
+                        <img
+                          src={getServiceImageByName(service.name, service.imageUrl) || ''}
+                          alt={service.name}
+                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg object-cover border border-white/15 shrink-0"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/40 text-[10px] text-zinc-400 sm:h-12 sm:w-12">
+                          Sem foto
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-medium text-white text-sm sm:text-base truncate">{service.name}</p>
+                        <p className="text-xs sm:text-sm text-zinc-400">{service.durationMinutes} min</p>
                       </div>
                     </div>
-                    <div className="text-right space-y-2">
-                      <p className="text-lg font-semibold text-white">{formatPrice(service.price)}</p>
+                    <div className="text-right shrink-0">
+                      <p className="text-base sm:text-lg font-semibold text-white">{formatPrice(service.price)}</p>
                       <Link
                         href={`/barberia/${params.id}/agendar?servicoId=${service.id}`}
-                        className="inline-flex items-center justify-center rounded-lg border border-white/25 px-3 py-1.5 text-xs font-medium text-white hover:bg-white hover:text-black transition"
+                        className="inline-flex items-center justify-center rounded-lg border border-white/25 px-2.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-white hover:bg-white hover:text-black transition mt-1"
                       >
                         Agendar
                       </Link>
@@ -458,20 +554,20 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
             )}
 
             {activeTab === 'reviews' && (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 {shop.reviews.length === 0 && (
-                  <div className="rounded-xl border border-white/10 bg-black/50 p-4 text-sm text-zinc-400">
-                    Nenhuma avaliacao cadastrada ainda.
+                  <div className="rounded-lg sm:rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4 text-sm text-zinc-400">
+                    Nenhuma avaliação cadastrada ainda.
                   </div>
                 )}
                 {shop.reviews.map((review) => (
-                  <div key={review.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-medium text-white">{review.author}</p>
-                      <p className="text-xs text-zinc-500">{review.date}</p>
+                  <div key={review.id} className="rounded-lg sm:rounded-xl border border-white/10 bg-black/50 p-3 sm:p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-white text-sm sm:text-base">{review.author}</p>
+                      <p className="text-[10px] sm:text-xs text-zinc-500 shrink-0">{review.date}</p>
                     </div>
-                    <p className="mt-1 text-sm text-amber-400">{ratingStars(review.rating)}</p>
-                    <p className="mt-2 text-sm text-zinc-300">{review.comment}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-amber-400">{ratingStars(review.rating)}</p>
+                    <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-zinc-300">{review.comment}</p>
                   </div>
                 ))}
               </div>
@@ -480,89 +576,94 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
         </section>
 
         {/* Sidebar */}
-        <aside className="mt-6 space-y-6 lg:mt-0">
-          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
-            <h3 className="text-lg font-semibold">Agendamento</h3>
-            <p className="mt-2 text-sm text-zinc-300">Reserve seu horário com confirmação rápida no WhatsApp.</p>
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
+        <aside className="mt-4 sm:mt-6 space-y-4 sm:space-y-6 lg:mt-0">
+          <article className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950 p-4 sm:p-5 md:p-6 hidden lg:block">
+            <h3 className="text-base sm:text-lg font-semibold">Agendamento</h3>
+            <p className="mt-2 text-xs sm:text-sm text-zinc-300">Reserve seu horário com confirmação rápida no WhatsApp.</p>
+            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="mt-3 sm:mt-4 inline-flex w-full items-center justify-center rounded-lg sm:rounded-xl bg-white px-4 py-2.5 sm:py-3 text-sm font-semibold text-black transition hover:bg-zinc-200">
               Agendar via WhatsApp
             </a>
-            <Link href="/buscar" className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-white/20 px-4 py-3 text-sm font-medium text-white hover:bg-zinc-900">
+            <Link href="/buscar" className="mt-2 sm:mt-3 inline-flex w-full items-center justify-center rounded-lg sm:rounded-xl border border-white/20 px-4 py-2.5 sm:py-3 text-sm font-medium text-white hover:bg-zinc-900">
               Voltar para busca
             </Link>
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
-            <h3 className="text-lg font-semibold">Comodidades</h3>
+          <article className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950 p-4 sm:p-5 md:p-6">
+            <h3 className="text-base sm:text-lg font-semibold">Comodidades</h3>
             {shop.amenities.length === 0 ? (
-              <p className="mt-3 text-sm text-zinc-400">Sem comodidades cadastradas.</p>
+              <p className="mt-2 sm:mt-3 text-sm text-zinc-400">Sem comodidades cadastradas.</p>
             ) : (
-              <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+              <ul className="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-zinc-300">
                 {shop.amenities.map((amenity) => (
                   <li key={amenity} className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-white" />{amenity}
+                    <span className="h-1 w-1 sm:h-1.5 sm:w-1.5 rounded-full bg-white" />{amenity}
                   </li>
                 ))}
               </ul>
             )}
           </article>
 
-          <article className="rounded-2xl border border-white/10 bg-zinc-950 p-5 md:p-6">
-            <h3 className="text-lg font-semibold">Localização</h3>
-            <p className="mt-3 text-sm text-zinc-300">{shop.address}</p>
-            <p className="mt-1 text-xs text-zinc-500">{shop.district} - {shop.city}</p>
-            <h4 className="mt-5 text-sm font-semibold text-white">Contato</h4>
-            <p className="mt-2 text-sm text-zinc-300">{shop.phone || 'Não informado'}</p>
-            <h4 className="mt-5 text-sm font-semibold text-white">Horários</h4>
-            {weeklySchedule.length > 0 ? (
-              <div className="mt-2 space-y-2">
-                {weeklySchedule.map((dia) => {
-                  const todayKey = DAY_KEY_BY_INDEX[new Date().getDay()]
-                  const isToday = dia.key === todayKey
-                  const agora = new Date()
-                  const minutosAgora = (agora.getHours() * 60) + agora.getMinutes()
-                  const aberturaMin = horarioParaMinutos(dia.abertura)
-                  const fechamentoMin = horarioParaMinutos(dia.fechamento)
-                  const foraDoHorarioHoje = isToday && !dia.fechado && aberturaMin !== null && fechamentoMin !== null
-                    ? (minutosAgora < aberturaMin || minutosAgora >= fechamentoMin)
-                    : false
-                  const fechadoNoMomento = dia.fechado || foraDoHorarioHoje
-                  const statusColor = isToday ? (fechadoNoMomento ? 'text-red-400' : 'text-green-400') : 'text-zinc-300'
+          <article className="rounded-xl sm:rounded-2xl border border-white/10 bg-zinc-950 p-4 sm:p-5 md:p-6">
+            <h3 className="text-base sm:text-lg font-semibold">Localização</h3>
+            <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-zinc-300">{shop.address}</p>
+            <p className="mt-1 text-[10px] sm:text-xs text-zinc-500">{shop.district} - {shop.city}</p>
+            <h4 className="mt-4 sm:mt-5 text-xs sm:text-sm font-semibold text-white">Contato</h4>
+            <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-zinc-300">{shop.phone || 'Não informado'}</p>
+            <div className="mt-5 border-t border-white/10 pt-5">
+              <h4 className="text-sm font-semibold text-white">Horário de atendimento</h4>
+              {diasAtendimento.length > 0 ? (
+                <div className="mt-5 divide-y divide-white/5">
+                  {diasAtendimento.map((dia) => {
+                    const todayKey = DAY_KEY_BY_INDEX[agoraReferencia.getDay()]
+                    const isToday = dia.key === todayKey
+                    const abertoAgora = isToday && estaDentroDoExpediente(dia, agoraReferencia)
+                    const fechadoAgora = isToday && !abertoAgora
 
-                  return (
-                    <div key={dia.key} className="rounded-lg border border-white/10 bg-black/50 px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`text-sm font-medium ${statusColor}`}>
-                          {dia.label}
-                        </p>
-                        {isToday && (
-                          <span className={`text-xs font-semibold ${fechadoNoMomento ? 'text-red-400' : 'text-green-400'}`}>
-                            HOJE
-                          </span>
-                        )}
+                    return (
+                      <div key={dia.key || dia.label} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className={`text-sm ${isToday ? 'font-semibold text-white' : 'text-zinc-400'}`}>
+                            {dia.label}
+                          </p>
+                          {isToday && (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${fechadoAgora ? 'bg-red-500/15 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                              Hoje
+                            </span>
+                          )}
+                        </div>
+                        <div className={`shrink-0 space-y-0.5 text-right text-sm font-medium ${fechadoAgora ? 'text-red-300' : 'text-zinc-300'}`}>
+                          {fechadoAgora ? (
+                            <p>Fechado</p>
+                          ) : (
+                            dia.intervalos.map((intervalo) => (
+                              <p key={`${intervalo.abertura}-${intervalo.fechamento}`}>
+                                {horarioCurto(intervalo.abertura)} - {horarioCurto(intervalo.fechamento)}
+                              </p>
+                            ))
+                          )}
+                        </div>
                       </div>
-                      <p className={`text-sm mt-1 ${fechadoNoMomento ? 'text-red-400' : 'text-zinc-300'}`}>
-                        {fechadoNoMomento ? 'Fechado' : `${horarioCurto(dia.abertura)} - ${horarioCurto(dia.fechamento)}`}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : shop.openingHours.length === 0 ? (
-              <p className="mt-2 text-sm text-zinc-400">Horários não informados.</p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm text-zinc-300">
-                {shop.openingHours.map((hour) => (<li key={hour}>{hour}</li>))}
-              </ul>
-            )}
+                    )
+                  })}
+                </div>
+              ) : shop.openingHours.length === 0 ? (
+                <p className="mt-3 text-xs sm:text-sm text-zinc-400">Horários não informados.</p>
+              ) : (
+                <ul className="mt-3 space-y-1 text-xs sm:text-sm text-zinc-300">
+                  {shop.openingHours.map((hour) => (<li key={hour}>{hour}</li>))}
+                </ul>
+              )}
+            </div>
           </article>
         </aside>
       </div>
 
       {/* Floating Button Mobile */}
-      <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="fixed bottom-5 left-4 right-4 inline-flex items-center justify-center rounded-xl bg-white px-5 py-4 text-sm font-semibold text-black shadow-lg transition hover:bg-zinc-200 lg:hidden">
+      <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="fixed bottom-4 left-4 right-4 inline-flex items-center justify-center rounded-xl bg-white px-5 py-3.5 text-sm font-semibold text-black shadow-lg transition active:scale-[0.98] hover:bg-zinc-200 lg:hidden">
         Agendar agora via WhatsApp
       </a>
+
+      <AccessibilityShortcuts mobileOffsetClass="bottom-24" />
     </main>
   )
 }

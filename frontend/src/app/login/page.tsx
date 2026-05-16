@@ -1,163 +1,199 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowRight, Eye, EyeOff } from 'lucide-react'
+import ProfessionalAccessShell from '@/components/auth/ProfessionalAccessShell'
 import { useAuth, getRedirectByUserType } from '@/context/AuthContext'
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberSession, setRememberSession] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
-  const handleSubmit = async (e) => {
+  const redirect = searchParams.get('redirect') || ''
+  const isProfessionalAccess = redirect.startsWith('/barbearia')
+
+  const cadastroHref = useMemo(() => {
+    const params = new URLSearchParams()
+
+    if (redirect) params.set('redirect', redirect)
+    if (isProfessionalAccess) params.set('tipo', 'barbeiro')
+
+    const query = params.toString()
+    return query ? `/cadastro?${query}` : '/cadastro'
+  }, [redirect, isProfessionalAccess])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      const result = await login(email, password, rememberSession)
-      const redirect = searchParams.get('redirect')
-      router.push(redirect || getRedirectByUserType(result.usuario))
-    } catch (err) {
+      const result = await login(email, password)
+      const fallbackRoute = getRedirectByUserType(result.usuario)
+      const requestedProfessionalRoute = redirect.startsWith('/barbearia')
+      const canAccessRequestedRoute = !requestedProfessionalRoute || result.usuario?.tipo === 'barbeiro'
+
+      router.push(canAccessRequestedRoute && redirect ? redirect : fallbackRoute)
+    } catch (err: any) {
       setError(err.message || 'Erro ao fazer login')
     } finally {
       setLoading(false)
     }
   }
 
+  const heroCards = isProfessionalAccess
+    ? [
+        {
+          label: 'Agenda',
+          description: 'Visualize horários, pendências e próximos atendimentos.',
+        },
+        {
+          label: 'Clientes',
+          description: 'Acompanhe recorrência, contatos e histórico.',
+        },
+        {
+          label: 'Extrato',
+          description: 'Consulte faturamento, ticket médio e previsões.',
+        },
+      ]
+    : [
+        {
+          label: 'Busca',
+          description: 'Encontre as melhores barbearias e compare opções perto de você.',
+        },
+        {
+          label: 'Agenda',
+          description: 'Acompanhe os próximos horários e o histórico dos seus atendimentos.',
+        },
+        {
+          label: 'Perfil',
+          description: 'Centralize dados da conta, favoritos e benefícios em um só lugar.',
+        },
+      ]
+
   return (
-    <main className="min-h-screen bg-black text-white">
-      <header className="fixed top-0 w-full bg-black/95 backdrop-blur-md border-b border-white/10 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.jpg" alt="Sou Barbeiro" className="w-14 h-14 rounded-full object-cover border-2 border-white" />
-            <span className="text-lg font-bold text-white">Sou Barbeiro</span>
-          </Link>
-          <nav className="flex gap-6">
-            <Link href="/" className="text-sm font-medium text-zinc-300 hover:text-white transition">
-              Início
-            </Link>
-            <Link href="/buscar" className="text-sm font-medium text-zinc-300 hover:text-white transition">
-              Buscar
-            </Link>
-            <Link href="/cadastro" className="text-sm font-medium text-zinc-300 hover:text-white transition">
-              Criar conta
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <section className="min-h-screen pt-28 px-4 pb-10 flex items-start justify-center">
-        <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 lg:gap-12 items-stretch">
-          <aside className="hidden lg:flex flex-col justify-center rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900 to-black p-10">
-            <p className="text-zinc-400 text-sm uppercase tracking-wider">Acesso rápido</p>
-            <h1 className="text-4xl font-bold mt-4 leading-tight">
-              Bem-vindo de volta ao
-              <span className="block text-zinc-300">Sou Barbeiro</span>
-            </h1>
-            <p className="text-zinc-400 mt-4 max-w-md">
-              Entre para acompanhar seus agendamentos, buscar novas barbearias e manter seu perfil sempre atualizado.
-            </p>
-            <div className="mt-8 grid grid-cols-2 gap-4 text-sm">
-              <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-4">
-                <p className="text-zinc-500">Busca inteligente</p>
-                <p className="text-white font-semibold mt-1">Barbearias perto de você</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-zinc-900/70 p-4">
-                <p className="text-zinc-500">Agendamento</p>
-                <p className="text-white font-semibold mt-1">Escolha data e horário</p>
-              </div>
+    <ProfessionalAccessShell
+      audienceLabel={isProfessionalAccess ? 'Área da barbearia' : 'Acesso à plataforma'}
+      currentLabel="Entrar"
+      navLinks={[{ href: '/buscar', label: 'Buscar' }]}
+      heroEyebrow={isProfessionalAccess ? 'Painel profissional' : 'Acesso à plataforma'}
+      heroTitle={
+        isProfessionalAccess
+          ? 'Sua agenda, clientes e caixa em um só lugar'
+          : 'Entre para gerenciar seus horários e descobertas em um só lugar'
+      }
+      heroDescription={
+        isProfessionalAccess
+          ? 'Acesse o painel da sua barbearia para organizar horários, acompanhar clientes e visualizar o desempenho do dia.'
+          : 'Entre na sua conta para continuar agendando, salvar barbearias favoritas e acompanhar tudo sem perder contexto.'
+      }
+      heroCards={heroCards}
+      panelEyebrow={isProfessionalAccess ? 'Entrar como barbeiro' : 'Entrar na conta'}
+      panelTitle={isProfessionalAccess ? 'Abra seu painel profissional' : 'Volte para a sua conta'}
+      panelDescription={
+        isProfessionalAccess
+          ? 'Use seu acesso profissional para voltar ao painel da barbearia e continuar exatamente de onde parou.'
+          : 'Se você já tem acesso, entre agora e continue sua experiência sem refazer etapas.'
+      }
+      panelContent={
+        <div className="space-y-5">
+          {error ? (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {error}
             </div>
-          </aside>
+          ) : null}
 
-          <div className="w-full max-w-sm lg:max-w-md lg:justify-self-end rounded-2xl border border-white/10 bg-zinc-900/50 p-6 md:p-8">
-            <div className="text-center mb-8">
-              <Link href="/">
-                <img 
-                  src="/logo.jpg" 
-                  alt="Sou Barbeiro" 
-                  className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-white"
-                />
-              </Link>
-              <h2 className="text-2xl font-bold text-white">Sou Barbeiro</h2>
-              <p className="text-zinc-400">Faça seu login</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-black/45 px-4 py-3.5 text-base text-white outline-none transition-all placeholder:text-zinc-600 focus:border-white/25 focus:ring-2 focus:ring-white/10"
+                placeholder="seu@email.com"
+                required
+                autoComplete="email"
+              />
             </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg mb-4">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">
-                  Email
-                </label>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-zinc-300">Senha</label>
+              <div className="relative">
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-700 text-white focus:border-white focus:outline-none"
-                  placeholder="seu@email.com"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">
-                  Senha
-                </label>
-                <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-700 text-white focus:border-white focus:outline-none"
+                  className="w-full rounded-2xl border border-white/10 bg-black/45 px-4 py-3.5 pr-12 text-base text-white outline-none transition-all placeholder:text-zinc-600 focus:border-white/25 focus:ring-2 focus:ring-white/10"
                   placeholder="••••••••"
                   required
+                  autoComplete="current-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
+            </div>
 
-              <label className="flex items-center gap-2 text-sm text-zinc-400 select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberSession}
-                  onChange={(e) => setRememberSession(e.target.checked)}
-                  className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-white focus:ring-white"
-                />
-                Lembrar senha
-              </label>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-white text-black rounded-lg font-medium hover:bg-zinc-200 transition disabled:opacity-50"
-              >
-                {loading ? 'Entrando...' : 'Entrar'}
-              </button>
-            </form>
-
-            <p className="text-center mt-6 text-zinc-400 text-sm">
-              Não tem conta?{' '}
-              <Link href="/cadastro" className="text-white font-medium">
-                Criar
-              </Link>
-            </p>
-            
-            <p className="text-center mt-4">
-              <Link href="/" className="text-sm text-zinc-500">
-                ← Voltar ao início
-              </Link>
-            </p>
-          </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-[22px] bg-white px-5 py-4 text-base font-semibold text-black transition-all duration-200 hover:bg-zinc-200 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading
+                ? 'Entrando...'
+                : isProfessionalAccess
+                  ? 'Entrar e abrir meu painel'
+                  : 'Entrar e continuar'}
+            </button>
+          </form>
         </div>
-      </section>
-    </main>
+      }
+      panelFooter={
+        <div className="space-y-4">
+          <Link
+            href={cadastroHref}
+            className="flex items-center justify-between gap-3 rounded-[22px] border border-white/10 bg-black/40 px-5 py-4 text-white transition-all duration-200 hover:border-emerald-400/35 hover:bg-emerald-500/8"
+          >
+            <div>
+              <p className="text-lg font-semibold text-white">Criar uma conta</p>
+              <p className="mt-1 text-sm text-zinc-400">
+                {isProfessionalAccess
+                  ? 'Começar meu acesso profissional como barbeiro.'
+                  : 'Criar um novo acesso e continuar depois.'}
+              </p>
+            </div>
+            <ArrowRight className="h-5 w-5 shrink-0 text-emerald-300" />
+          </Link>
+
+          <p className="text-sm leading-7 text-zinc-500">
+            {isProfessionalAccess
+              ? 'Se você quer marcar um horário como cliente, o caminho ideal continua sendo pelo perfil do cliente.'
+              : 'Se você está entrando para gerenciar uma barbearia, crie uma conta profissional e siga para o painel.'}
+          </p>
+        </div>
+      }
+    />
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   )
 }

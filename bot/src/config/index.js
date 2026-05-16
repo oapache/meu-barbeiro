@@ -10,6 +10,7 @@ function parseList(value, fallback = []) {
 }
 
 const appUrl = process.env.APP_URL || 'https://ocortecerto.com';
+const backendApiUrl = String(process.env.BACKEND_API_URL || process.env.API_PUBLIC_URL || 'https://api.ocortecerto.com/api').replace(/\/+$/, '');
 
 module.exports = {
   port: process.env.BOT_PORT || process.env.PORT || 3010,
@@ -28,6 +29,15 @@ module.exports = {
     expiresIn: '7d',
   },
   botServiceToken: process.env.BOT_SERVICE_TOKEN || '',
+  backendSync: {
+    apiUrl: backendApiUrl,
+    enabled: process.env.BOT_BACKEND_SYNC_ENABLED !== 'false',
+    intervalMs: Number(process.env.BOT_BACKEND_SYNC_INTERVAL_MS || process.env.BOT_SCHEDULER_INTERVAL_MS || 60000),
+    limit: Number(process.env.BOT_BACKEND_SYNC_LIMIT || 200),
+    overlapMinutes: Number(process.env.BOT_BACKEND_SYNC_OVERLAP_MINUTES || 5),
+    statePath: process.env.BOT_BACKEND_SYNC_STATE_PATH || '.bot_sync_state.json',
+    timeoutMs: Number(process.env.BOT_BACKEND_SYNC_TIMEOUT_MS || 15000),
+  },
   redis: {
     url: process.env.REDIS_URL || '',
     host: process.env.REDIS_HOST || '127.0.0.1',

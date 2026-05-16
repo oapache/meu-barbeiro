@@ -2,6 +2,12 @@ const express = require('express');
 const config = require('../config');
 const { sendTextMessage, disconnectBotPorAssinatura } = require('../services/whatsappBot');
 const { registrarSolicitacaoAvaliacaoPendente } = require('../services/chatbotConversation');
+const {
+  upsertUser,
+  upsertBarbearia,
+  upsertSubscription,
+  bootstrapBarbershop,
+} = require('../services/syncBridge');
 
 const router = express.Router();
 
@@ -55,6 +61,42 @@ router.post('/subscription/disconnect', async (req, res) => {
     res.json({ bot: result || null });
   } catch (error) {
     res.status(400).json({ error: error?.message || 'Não foi possível desconectar o bot por assinatura.' });
+  }
+});
+
+router.post('/sync/user', async (req, res) => {
+  try {
+    const result = await upsertUser(req.body?.user || req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Não foi possível sincronizar o usuário no bot.' });
+  }
+});
+
+router.post('/sync/barbershop', async (req, res) => {
+  try {
+    const result = await upsertBarbearia(req.body?.barbearia || req.body?.barbershop || req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Não foi possível sincronizar a barbearia no bot.' });
+  }
+});
+
+router.post('/sync/subscription', async (req, res) => {
+  try {
+    const result = await upsertSubscription(req.body?.subscription || req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Não foi possível sincronizar a assinatura no bot.' });
+  }
+});
+
+router.post('/sync/bootstrap-barbershop', async (req, res) => {
+  try {
+    const result = await bootstrapBarbershop(req.body || {});
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error?.message || 'Não foi possível sincronizar os dados da barbearia no bot.' });
   }
 });
 

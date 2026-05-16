@@ -9,13 +9,30 @@ const config = require('./config');
 
 const app = express();
 
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  if (config.cors?.origins?.includes('*')) return true;
+  return config.cors?.origins?.includes(origin);
+}
+
 // Stripe webhook must receive raw body for signature validation.
 const webhookRoutes = require('./routes/webhooks');
 app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
 
 // Middlewares
+app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  credentials: true,
+  origin(origin, callback) {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Origem não permitida pela API.'));
+  },
+}));
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -26,8 +43,11 @@ const barbeariasRoutes = require('./routes/barbearias');
 const usuariosRoutes = require('./routes/usuarios');
 const servicosRoutes = require('./routes/servicos');
 const agendamentosRoutes = require('./routes/agendamentos');
+const clientesRoutes = require('./routes/clientes');
+const estoqueRoutes = require('./routes/estoque');
 const uploadRoutes = require('./routes/upload');
 const subscriptionsRoutes = require('./routes/subscriptions');
+const internalBotSyncRoutes = require('./routes/internalBotSync');
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -45,8 +65,11 @@ app.use('/api/barbearias', barbeariasRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/servicos', servicosRoutes);
 app.use('/api/agendamentos', agendamentosRoutes);
+app.use('/api/clientes', clientesRoutes);
+app.use('/api/estoque', estoqueRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/subscriptions', subscriptionsRoutes);
+app.use('/api/internal/bot', internalBotSyncRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

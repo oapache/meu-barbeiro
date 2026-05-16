@@ -1,5 +1,6 @@
 declare module '@/context/AuthContext' {
   export type AuthUser = {
+    id?: string
     nome?: string
     email?: string
     telefone?: string

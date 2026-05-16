@@ -16,7 +16,26 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# WhatsApp bot local session
+backend/.wwebjs_auth/
+backend/.wwebjs_cache/
+bot/.baileys_auth/
+bot/.bot_sync_state.json
+
+# Build and deploy artifacts
+*.zip
+FTP/
+output/
+frontend/.next/
+frontend/.next_corrupt_*/
+frontend/tsconfig.tsbuildinfo
+backend/uploads/
+
+# Local tool state
+.playwright-cli/
+.superpowers/
+
 # OS/editor
 .DS_Store
 Thumbs.db
-.vscode/*.log
+.vscode/

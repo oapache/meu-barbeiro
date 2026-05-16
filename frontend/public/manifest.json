@@ -1,7 +1,7 @@
 {
-  "name": "Meu Barbeiro",
-  "short_name": "Barbeiro",
-  "description": "App de barbearia - Agendamento online",
+  "name": "O Corte Certo",
+  "short_name": "Corte Certo",
+  "description": "O Corte Certo - Agendamento online de barbearia",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -9,9 +9,9 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/logo.jpg",
-      "sizes": "512x512",
-      "type": "image/jpeg"
+      "src": "/logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
     }
   ]
 }

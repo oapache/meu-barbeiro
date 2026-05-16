@@ -3,8 +3,9 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
+import { SERVICE_BY_TYPE, SERVICE_OPTIONS, getServiceImageByName, getServiceImageValueForSave, getServiceNameForTypeChange, type TipoServicoCatalog } from '@/lib/serviceCatalog'
 import ApiService from '@/services/api'
-import { Save, Upload, Phone, MapPin, Clock, BadgeCheck } from 'lucide-react'
+import { Save, Upload, Phone, MapPin, Clock, BadgeCheck, Lock, Wallet } from 'lucide-react'
 
 type UsuarioLogado = {
   id?: string | number
@@ -54,37 +55,23 @@ type ServicoItem = {
   nome: string
   preco: number
   duracao_minutos: number
-  imagem: string
+  imagem: string | null
+  ativo?: boolean
+  pausado_por_assinatura?: boolean
 }
 
-type TipoServico = 'cabelo' | 'cabelo_sobrancelha' | 'barba' | 'cabelo_barba' | 'corte_feminino'
-
-const OPCOES_SERVICO: Array<{ value: TipoServico; label: string; image: string }> = [
-  { value: 'cabelo', label: 'Cabelo', image: '/service-icons/cabelo.png' },
-  { value: 'cabelo_sobrancelha', label: 'Cabelo + Sobrancelha', image: '/service-icons/cabelo-sobrancelha.png' },
-  { value: 'barba', label: 'Barba', image: '/service-icons/barba.png' },
-  { value: 'cabelo_barba', label: 'Cabelo + Barba', image: '/service-icons/cabelo-barba.png' },
-  { value: 'corte_feminino', label: 'Corte Feminino', image: '/service-icons/corte-feminino.png' },
-]
-
-const SERVICO_POR_TIPO: Record<TipoServico, { nome: string; imagem: string }> = {
-  cabelo: { nome: 'Cabelo', imagem: '/service-icons/cabelo.png' },
-  cabelo_sobrancelha: { nome: 'Cabelo + Sobrancelha', imagem: '/service-icons/cabelo-sobrancelha.png' },
-  barba: { nome: 'Barba', imagem: '/service-icons/barba.png' },
-  cabelo_barba: { nome: 'Cabelo + Barba', imagem: '/service-icons/cabelo-barba.png' },
-  corte_feminino: { nome: 'Corte Feminino', imagem: '/service-icons/corte-feminino.png' },
+type SubscriptionResumo = {
+  status?: string
+  plan_key?: string
 }
 
-const inferirImagemServico = (nomeServico: string) => {
-  const nomeNormalizado = String(nomeServico || '').toLowerCase()
-
-  if (nomeNormalizado.includes('feminino')) return '/service-icons/corte-feminino.png'
-  if (nomeNormalizado.includes('cabelo') && nomeNormalizado.includes('barba')) return '/service-icons/cabelo-barba.png'
-  if (nomeNormalizado.includes('sobrancelha')) return '/service-icons/cabelo-sobrancelha.png'
-  if (nomeNormalizado.includes('barba')) return '/service-icons/barba.png'
-  if (nomeNormalizado.includes('cabelo')) return '/service-icons/cabelo.png'
-
-  return '/service-icons/cabelo.png'
+const PREMIUM_UNLOCKED_STATUSES = ['active', 'trialing', 'past_due']
+const PLAN_MAX_PROFISSIONAIS: Record<string, number> = {
+  free: 0,
+  professionals_1: 1,
+  professionals_2_5: 5,
+  professionals_6_15: 15,
+  professionals_15_plus: 999,
 }
 
 const AMENIDADES_PADRAO = [
@@ -114,6 +101,30 @@ const criarHorariosPadrao = (): HorarioDia[] =>
     abertura: '09:00',
     fechamento: '18:00',
   }))
+
+const parseArraySafe = (value: unknown): any[] => {
+  if (Array.isArray(value)) return value
+
+  let current = value
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (typeof current !== 'string') break
+
+    const trimmed = current.trim()
+    if (!trimmed) return []
+
+    try {
+      current = JSON.parse(trimmed)
+    } catch {
+      return []
+    }
+
+    if (Array.isArray(current)) return current
+  }
+
+  return Array.isArray(current) ? current : []
+}
+
+const normalizarBoolean = (value: unknown) => value === true || value === 1 || ['1', 'true', 'sim', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
 
 const mascaraCep = (valor: string) => {
   const numeros = valor.replace(/\D/g, '').slice(0, 8)
@@ -172,6 +183,44 @@ const parseEndereco = (endereco: string) => {
   return { rua, numero, complemento, bairro, cidade, estado, cep }
 }
 
+const isPersistableMediaUrl = (value: string) => {
+  const url = String(value || '').trim()
+  if (!url) return false
+
+  return (
+    url.startsWith('http://')
+    || url.startsWith('https://')
+    || url.startsWith('/uploads/')
+    || url.startsWith('/api/uploads/')
+  )
+}
+
+const normalizarMediaUrl = (value: string) => {
+  const url = String(value || '').trim()
+  if (!url) return ''
+  if (!isPersistableMediaUrl(url)) return ''
+  if (
+    url.startsWith('http://')
+    && !url.includes('localhost')
+    && !url.includes('127.0.0.1')
+  ) {
+    return `https://${url.slice('http://'.length)}`
+  }
+  return url
+}
+
+const formatarMensagemLimiteProfissionais = (limite: number) => {
+  if (!Number.isFinite(limite) || limite <= 0) {
+    return 'Seu plano atual não permite cadastrar novos barbeiros.'
+  }
+
+  if (limite === 1) {
+    return 'Seu plano atual permite apenas 1 barbeiro. Troque para o próximo plano para montar uma equipe maior.'
+  }
+
+  return `Seu plano atual permite até ${limite} barbeiros. Troque de plano para ampliar a equipe.`
+}
+
 export default function ConfigurarPage() {
   const router = useRouter()
   const { user } = useAuth() as { user?: UsuarioLogado }
@@ -188,12 +237,13 @@ export default function ConfigurarPage() {
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([])
   const [novaAvaliacao, setNovaAvaliacao] = useState({ autor: '', nota: '5', comentario: '' })
   const [servicos, setServicos] = useState<ServicoItem[]>([])
-  const [novoServico, setNovoServico] = useState({ tipo: 'cabelo' as TipoServico, preco: '', duracao: '40' })
+  const [novoServico, setNovoServico] = useState({ tipo: 'cabelo' as TipoServicoCatalog, nome: SERVICE_BY_TYPE.cabelo.nome, preco: '', duracao: '40' })
   const [bannerUrl, setBannerUrl] = useState('')
   const [galeria, setGaleria] = useState<string[]>([])
   const [enviandoBanner, setEnviandoBanner] = useState(false)
   const [enviandoGaleria, setEnviandoGaleria] = useState(false)
   const [enviandoLogo, setEnviandoLogo] = useState(false)
+  const [subscriptionResumo, setSubscriptionResumo] = useState<SubscriptionResumo | null>(null)
 
   const [form, setForm] = useState<FormBarbearia>({
     nome: '',
@@ -211,6 +261,48 @@ export default function ConfigurarPage() {
     logo_url: '',
   })
 
+  const assinaturaPremiumLiberada = PREMIUM_UNLOCKED_STATUSES.includes(String(subscriptionResumo?.status || '').trim())
+  const limiteProfissionaisPlano = PLAN_MAX_PROFISSIONAIS[String(subscriptionResumo?.plan_key || 'free').trim()] ?? 0
+  const equipeAtingiuLimitePlano = assinaturaPremiumLiberada
+    && limiteProfissionaisPlano > 0
+    && profissionais.length >= limiteProfissionaisPlano
+  const assinaturaResumoLabel = assinaturaPremiumLiberada ? 'Recursos premium liberados' : 'Sem assinatura ativa'
+  const assinaturaResumoDescricao = assinaturaPremiumLiberada
+    ? 'Fotos, serviços e equipe estão liberados para este perfil.'
+    : 'Você pode configurar nome, endereço, telefone, horários, comodidades, avaliações, logo, banner e galeria. Novos serviços e novos barbeiros exigem assinatura. Se o plano vencer, os serviços atuais ficam pausados e voltam automaticamente quando o pagamento for regularizado.'
+
+  const abrirPlanos = () => router.push('/barbearia/planos')
+
+  const avisarBloqueioPremium = (recurso: string) => {
+    setMessage(`${recurso} fica disponível com assinatura ativa. Os dados básicos da barbearia continuam liberados.`)
+  }
+
+  const montarPayloadBarbearia = (logoUrlOverride?: string) => {
+    const diasAbertos = horarios.filter((dia) => !dia.fechado)
+    const primeiraAbertura = diasAbertos.map((dia) => dia.abertura).sort()[0]
+    const ultimoFechamento = diasAbertos.map((dia) => dia.fechamento).sort().reverse()[0]
+
+    return {
+      nome: form.nome,
+      telefone: form.telefone,
+      endereco: montarEndereco(form),
+      horario_abertura: primeiraAbertura || '09:00',
+      horario_fechamento: ultimoFechamento || '20:00',
+      usuario_id: user?.id,
+      logo_url: normalizarMediaUrl(logoUrlOverride ?? form.logo_url) || null,
+      whatsapp_link: form.whatsapp || null,
+      horarios_semana: horarios,
+    }
+  }
+
+  const montarPayloadDetalhes = (overrides?: { bannerUrl?: string; galeriaAtualizada?: string[] }) => ({
+    amenidades: amenidadesSelecionadas,
+    profissionais,
+    avaliacoes,
+    banner_url: normalizarMediaUrl(overrides?.bannerUrl ?? bannerUrl),
+    galeria: (overrides?.galeriaAtualizada ?? galeria).map(normalizarMediaUrl).filter(Boolean),
+  })
+
   useEffect(() => {
     const carregarBarbearia = async () => {
       if (!user?.id) {
@@ -219,12 +311,16 @@ export default function ConfigurarPage() {
       }
 
       try {
-        const resposta = await ApiService.listBarbearias()
+        const resposta = await ApiService.listMyBarbearias()
         const lista = Array.isArray(resposta?.barbearias) ? resposta.barbearias : []
         const atual = lista.find((item: any) => String(item?.usuario_id) === String(user.id))
 
         if (atual) {
           setBarbeariaId(atual.id)
+          setSubscriptionResumo({
+            status: String(atual.subscription_status || 'inactive'),
+            plan_key: String(atual.subscription_plan || 'free'),
+          })
           const enderecoParseado = parseEndereco(atual.endereco || '')
           setForm({
             nome: atual.nome || '',
@@ -239,15 +335,16 @@ export default function ConfigurarPage() {
             estado: enderecoParseado.estado,
             horario_abertura: (atual.horario_abertura || '').replace(/:\d{2}$/, ''),
             horario_fechamento: (atual.horario_fechamento || '').replace(/:\d{2}$/, ''),
-            logo_url: atual.logo_url || '',
+            logo_url: normalizarMediaUrl(atual.logo_url || ''),
           })
 
-          if (Array.isArray(atual.horarios_semana) && atual.horarios_semana.length === 7) {
+          const horariosSemanaAtuais = parseArraySafe(atual.horarios_semana)
+          if (horariosSemanaAtuais.length === 7) {
             setHorarios(
-              atual.horarios_semana.map((dia: any) => ({
+              horariosSemanaAtuais.map((dia: any) => ({
                 key: String(dia?.key || ''),
                 label: String(dia?.label || ''),
-                fechado: Boolean(dia?.fechado),
+                fechado: normalizarBoolean(dia?.fechado),
                 abertura: String(dia?.abertura || ''),
                 fechamento: String(dia?.fechamento || ''),
               }))
@@ -255,18 +352,20 @@ export default function ConfigurarPage() {
           }
 
           try {
-            const respostaServicos = await ApiService.listServicos(atual.id)
+            const respostaServicos = await ApiService.listServicos(atual.id, { includeInactive: true })
             const listaServicos = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
             setServicos(
               listaServicos.map((servico: any) => {
-                const imagem = inferirImagemServico(String(servico?.nome || ''))
+                const imagem = servico?.imagem_url || getServiceImageByName(String(servico?.nome || ''), servico?.imagem_url)
 
                 return {
                   id: String(servico.id),
                   nome: String(servico.nome || ''),
                   preco: Number(servico.preco || 0),
                   duracao_minutos: Number(servico.duracao_minutos || 30),
-                  imagem,
+                  imagem: servico?.imagem_url || null,
+                  ativo: servico?.ativo !== false,
+                  pausado_por_assinatura: servico?.pausado_por_assinatura === true,
                 }
               })
             )
@@ -290,14 +389,35 @@ export default function ConfigurarPage() {
               setAmenidadesSelecionadas(detalhes.amenidades.filter((item: any) => typeof item === 'string'))
             }
 
-            setBannerUrl(String(detalhes?.banner_url || ''))
+            setBannerUrl(normalizarMediaUrl(String(detalhes?.banner_url || '')))
 
             if (Array.isArray(detalhes?.galeria)) {
-              setGaleria(detalhes.galeria.filter((item: any) => typeof item === 'string'))
+              setGaleria(
+                detalhes.galeria
+                  .filter((item: any) => typeof item === 'string')
+                  .map((item: string) => normalizarMediaUrl(item))
+                  .filter(Boolean)
+              )
             }
           } catch {
             // Mantem tela editavel mesmo sem detalhes salvos.
           }
+
+          try {
+            const respostaAssinatura = await ApiService.getCurrentSubscription({
+              userId: user.id,
+              barbeariaId: atual.id,
+            })
+
+            setSubscriptionResumo({
+              status: String(respostaAssinatura?.status || atual.subscription_status || 'inactive'),
+              plan_key: String(respostaAssinatura?.plan_key || atual.subscription_plan || 'free'),
+            })
+          } catch {
+            // Mantem o status carregado da barbearia se a consulta da assinatura falhar.
+          }
+        } else {
+          setSubscriptionResumo({ status: 'inactive', plan_key: 'free' })
         }
       } catch {
         setMessage('Não foi possível carregar os dados atuais da barbearia.')
@@ -330,6 +450,16 @@ export default function ConfigurarPage() {
   }
 
   const adicionarProfissional = () => {
+    if (!assinaturaPremiumLiberada) {
+      avisarBloqueioPremium('Adicionar barbeiros')
+      return
+    }
+
+    if (equipeAtingiuLimitePlano) {
+      setMessage(formatarMensagemLimiteProfissionais(limiteProfissionaisPlano))
+      return
+    }
+
     if (!novoProfissional.nome.trim() || !novoProfissional.cargo.trim()) return
 
     setProfissionais((prev) => [
@@ -346,6 +476,11 @@ export default function ConfigurarPage() {
   }
 
   const removerProfissional = (id: string) => {
+    if (!assinaturaPremiumLiberada) {
+      avisarBloqueioPremium('Alterar a equipe')
+      return
+    }
+
     setProfissionais((prev) => prev.filter((item) => item.id !== id))
   }
 
@@ -373,6 +508,11 @@ export default function ConfigurarPage() {
   }
 
   const adicionarServico = async () => {
+    if (!assinaturaPremiumLiberada) {
+      avisarBloqueioPremium('Adicionar serviços')
+      return
+    }
+
     const precoNumero = Number(String(novoServico.preco).replace(',', '.'))
     const duracaoNumero = Number(novoServico.duracao)
 
@@ -392,10 +532,12 @@ export default function ConfigurarPage() {
     }
 
     try {
-      const modelo = SERVICO_POR_TIPO[novoServico.tipo]
+      const modelo = SERVICE_BY_TYPE[novoServico.tipo]
+      const nome = String(novoServico.nome || '').trim() || modelo.nome
       const resposta = await ApiService.createServico(barbeariaId, {
-        nome: modelo.nome,
-        descricao: `Serviço ${modelo.nome}`,
+        nome,
+        descricao: `Serviço ${nome}`,
+        imagem_url: getServiceImageValueForSave(novoServico.tipo),
         preco: precoNumero,
         duracao_minutos: duracaoNumero,
       })
@@ -406,15 +548,15 @@ export default function ConfigurarPage() {
           ...prev,
           {
             id: String(criado.id),
-            nome: String(criado.nome || modelo.nome),
+            nome: String(criado.nome || nome),
             preco: Number(criado.preco || precoNumero),
             duracao_minutos: Number(criado.duracao_minutos || duracaoNumero),
-            imagem: modelo.imagem,
+            imagem: String(criado.imagem_url || getServiceImageValueForSave(novoServico.tipo)),
           },
         ])
       }
 
-      setNovoServico({ tipo: 'cabelo', preco: '', duracao: '40' })
+      setNovoServico({ tipo: 'cabelo', nome: SERVICE_BY_TYPE.cabelo.nome, preco: '', duracao: '40' })
       setMessage('Serviço cadastrado com sucesso.')
     } catch (error: any) {
       setMessage(error?.message || 'Não foi possível cadastrar o serviço.')
@@ -422,6 +564,11 @@ export default function ConfigurarPage() {
   }
 
   const removerServico = async (id: string) => {
+    if (!assinaturaPremiumLiberada) {
+      avisarBloqueioPremium('Alterar o catálogo de serviços')
+      return
+    }
+
     try {
       await ApiService.deleteServico(id)
       setServicos((prev) => prev.filter((servico) => servico.id !== id))
@@ -516,28 +663,7 @@ export default function ConfigurarPage() {
         throw new Error('Selecione ao menos uma comodidade.')
       }
 
-      const diasAbertos = horarios.filter((dia) => !dia.fechado)
-      const primeiraAbertura = diasAbertos
-        .map((dia) => dia.abertura)
-        .sort()[0]
-      const ultimoFechamento = diasAbertos
-        .map((dia) => dia.fechamento)
-        .sort()
-        .reverse()[0]
-
-      const enderecoCompleto = montarEndereco(form)
-
-      const payload = {
-        nome: form.nome,
-        telefone: form.telefone,
-        endereco: enderecoCompleto,
-        horario_abertura: primeiraAbertura || '09:00',
-        horario_fechamento: ultimoFechamento || '20:00',
-        usuario_id: user?.id,
-        logo_url: form.logo_url || null,
-        whatsapp_link: form.whatsapp || null,
-        horarios_semana: horarios,
-      }
+      const payload = montarPayloadBarbearia()
 
       if (!form.nome.trim()) {
         throw new Error('Informe o nome da barbearia.')
@@ -565,11 +691,7 @@ export default function ConfigurarPage() {
       }
 
       await ApiService.updateBarbeariaDetalhes(finalBarbeariaId, {
-        amenidades: amenidadesSelecionadas,
-        profissionais,
-        avaliacoes,
-        banner_url: bannerUrl,
-        galeria,
+        ...montarPayloadDetalhes(),
       })
 
       setMessage('Salvo com sucesso!')
@@ -584,17 +706,28 @@ export default function ConfigurarPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (!barbeariaId) {
+      setMessage('Salve os dados básicos da barbearia antes de enviar a logo.')
+      return
+    }
+
     try {
       setEnviandoLogo(true)
-      const resposta = await ApiService.uploadImagem(file)
+      const resposta = await ApiService.uploadImagem(file, {
+        barbeariaId,
+        scope: 'barbearia-media',
+        maxDimension: 900,
+        quality: 0.86,
+      })
       const url = String(resposta?.url || '')
 
       if (!url) {
         throw new Error('Não foi possível obter a URL do logo enviado.')
       }
 
+      await ApiService.updateBarbearia(barbeariaId, montarPayloadBarbearia(url))
       setForm((prev) => ({ ...prev, logo_url: url }))
-      setMessage('Logo atualizado com sucesso.')
+      setMessage('Logo enviada e salva com sucesso.')
     } catch (error: any) {
       setMessage(error?.message || 'Não foi possível enviar o logo.')
     } finally {
@@ -606,11 +739,27 @@ export default function ConfigurarPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (!barbeariaId) {
+      setMessage('Salve os dados básicos da barbearia antes de enviar o banner.')
+      return
+    }
+
     try {
       setEnviandoBanner(true)
-      const resposta = await ApiService.uploadImagem(file)
-      setBannerUrl(String(resposta?.url || ''))
-      setMessage('Banner atualizado com sucesso.')
+      const resposta = await ApiService.uploadImagem(file, {
+        barbeariaId,
+        scope: 'barbearia-media',
+        maxDimension: 1800,
+        quality: 0.82,
+      })
+      const url = normalizarMediaUrl(String(resposta?.url || ''))
+      if (!url) {
+        throw new Error('Não foi possível obter a URL do banner enviado.')
+      }
+
+      await ApiService.updateBarbeariaDetalhes(barbeariaId, montarPayloadDetalhes({ bannerUrl: url }))
+      setBannerUrl(url)
+      setMessage('Banner enviado e salvo com sucesso.')
     } catch (error: any) {
       setMessage(error?.message || 'Não foi possível enviar o banner.')
     } finally {
@@ -622,19 +771,31 @@ export default function ConfigurarPage() {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
 
+    if (!barbeariaId) {
+      setMessage('Salve os dados básicos da barbearia antes de enviar a galeria.')
+      return
+    }
+
     try {
       setEnviandoGaleria(true)
       const urls: string[] = []
       for (const file of files) {
-        const resposta = await ApiService.uploadImagem(file)
+        const resposta = await ApiService.uploadImagem(file, {
+          barbeariaId,
+          scope: 'barbearia-media',
+          maxDimension: 1600,
+          quality: 0.82,
+        })
         const url = String(resposta?.url || '')
         if (url) urls.push(url)
       }
 
       if (urls.length > 0) {
-        setGaleria((prev) => [...prev, ...urls])
+        const galeriaAtualizada = [...galeria, ...urls.map(normalizarMediaUrl).filter(Boolean)]
+        await ApiService.updateBarbeariaDetalhes(barbeariaId, montarPayloadDetalhes({ galeriaAtualizada }))
+        setGaleria(galeriaAtualizada)
       }
-      setMessage('Imagens adicionadas na galeria.')
+      setMessage('Galeria enviada e salva com sucesso.')
     } catch (error: any) {
       setMessage(error?.message || 'Não foi possível enviar imagens da galeria.')
     } finally {
@@ -695,6 +856,26 @@ export default function ConfigurarPage() {
                 </div>
               </div>
 
+              <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${assinaturaPremiumLiberada ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/30 bg-amber-500/10 text-amber-100'}`}>
+                <div className="flex items-start gap-3">
+                  {assinaturaPremiumLiberada ? <BadgeCheck className="mt-0.5 h-4 w-4 flex-shrink-0" /> : <Lock className="mt-0.5 h-4 w-4 flex-shrink-0" />}
+                  <div className="min-w-0">
+                    <p className="font-medium">{assinaturaResumoLabel}</p>
+                    <p className="mt-1 text-xs leading-5 opacity-90">{assinaturaResumoDescricao}</p>
+                    {!assinaturaPremiumLiberada && (
+                      <button
+                        type="button"
+                        onClick={abrirPlanos}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-400/30 bg-black/20 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-black/30"
+                      >
+                        <Wallet className="h-3.5 w-3.5" />
+                        Ver planos
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="w-28 h-28 rounded-xl bg-zinc-800 flex items-center justify-center overflow-hidden mb-4">
                 {form.logo_url ? (
                   <img src={form.logo_url} alt="Logo" className="w-full h-full object-cover" />
@@ -714,7 +895,9 @@ export default function ConfigurarPage() {
                   className="hidden"
                 />
               </label>
-              <p className="text-xs text-zinc-500 mt-2">PNG, JPG até 5MB</p>
+              <p className="text-xs text-zinc-500 mt-2">
+                PNG, JPG ou WebP até 5MB. A imagem é otimizada automaticamente antes do envio.
+              </p>
 
               <div className="mt-6 space-y-2">
                 <h3 className="text-sm font-medium text-zinc-200">Banner de fundo</h3>
@@ -952,26 +1135,76 @@ export default function ConfigurarPage() {
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
-              <h2 className="font-medium">Serviços</h2>
-              <p className="text-sm text-zinc-400">Clique em novo serviço para definir tipo, imagem e valor do corte.</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="font-medium">Serviços</h2>
+                  <p className="text-sm text-zinc-400">Clique em novo serviço para definir tipo, imagem e valor do corte.</p>
+                </div>
+                {!assinaturaPremiumLiberada && (
+                  <button
+                    type="button"
+                    onClick={abrirPlanos}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-500/15"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Adicionar serviços exige assinatura
+                  </button>
+                )}
+              </div>
 
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+              <div className={`rounded-lg border border-zinc-800 bg-zinc-950 p-4 space-y-3 ${assinaturaPremiumLiberada ? '' : 'opacity-70'}`}>
                 <p className="text-sm font-medium text-white">Novo serviço</p>
+                <div>
+                  <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">Foto de referência</p>
+                  <p className="text-xs text-zinc-400">Escolha a imagem base e personalize o nome do serviço como quiser.</p>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {SERVICE_OPTIONS.map((opcao) => {
+                    const item = SERVICE_BY_TYPE[opcao.value]
+                    const selecionado = novoServico.tipo === opcao.value
+
+                    return (
+                      <button
+                        key={opcao.value}
+                        type="button"
+                        disabled={!assinaturaPremiumLiberada}
+                        onClick={() => setNovoServico((prev) => ({
+                          ...prev,
+                          tipo: opcao.value,
+                          nome: getServiceNameForTypeChange(prev.nome, prev.tipo, opcao.value),
+                        }))}
+                        className={`rounded-lg border p-2 text-center transition disabled:cursor-not-allowed disabled:opacity-60 ${selecionado ? 'border-white bg-zinc-800' : 'border-zinc-700 bg-zinc-900 hover:bg-zinc-800/70'}`}
+                      >
+                        {item.imagem ? (
+                          <img
+                            src={item.imagem}
+                            alt={item.nome}
+                            className="w-12 h-12 rounded-md object-cover mx-auto mb-2 border border-zinc-700"
+                          />
+                        ) : (
+                          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-zinc-600 bg-zinc-950 text-[10px] text-zinc-400">
+                            Sem foto
+                          </div>
+                        )}
+                        <p className="text-xs text-zinc-200 leading-tight">{item.nome}</p>
+                      </button>
+                    )
+                  })}
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Tipo</label>
-                    <select
-                      value={novoServico.tipo}
-                      onChange={(e) => setNovoServico((prev) => ({ ...prev, tipo: e.target.value as TipoServico }))}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
-                    >
-                      {OPCOES_SERVICO.map((opcao) => (
-                        <option key={opcao.value} value={opcao.value}>{opcao.label}</option>
-                      ))}
-                    </select>
+                  <div className="md:col-span-3">
+                    <label className="block text-xs text-zinc-400 mb-1">Nome exibido</label>
+                    <input
+                      type="text"
+                      value={novoServico.nome}
+                      disabled={!assinaturaPremiumLiberada}
+                      onChange={(e) => setNovoServico((prev) => ({ ...prev, nome: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      placeholder="Ex: Corte seg a quinta"
+                    />
                   </div>
-
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Valor (cliente define)</label>
                     <input
@@ -979,8 +1212,9 @@ export default function ConfigurarPage() {
                       min="1"
                       step="0.01"
                       value={novoServico.preco}
+                      disabled={!assinaturaPremiumLiberada}
                       onChange={(e) => setNovoServico((prev) => ({ ...prev, preco: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-60"
                       placeholder="Ex: 45"
                     />
                   </div>
@@ -992,29 +1226,37 @@ export default function ConfigurarPage() {
                       min="5"
                       step="5"
                       value={novoServico.duracao}
+                      disabled={!assinaturaPremiumLiberada}
                       onChange={(e) => setNovoServico((prev) => ({ ...prev, duracao: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                      className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-60"
                     />
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <img
-                    src={SERVICO_POR_TIPO[novoServico.tipo].imagem}
-                    alt={SERVICO_POR_TIPO[novoServico.tipo].nome}
-                    className="w-14 h-14 rounded-lg object-cover border border-zinc-700"
-                  />
+                  {SERVICE_BY_TYPE[novoServico.tipo].imagem ? (
+                    <img
+                      src={SERVICE_BY_TYPE[novoServico.tipo].imagem || ''}
+                      alt={SERVICE_BY_TYPE[novoServico.tipo].nome}
+                      className="w-14 h-14 rounded-lg object-cover border border-zinc-700"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-dashed border-zinc-600 bg-zinc-950 text-[10px] text-zinc-400">
+                      Sem foto
+                    </div>
+                  )}
                   <div className="text-sm text-zinc-300">
-                    <p>{SERVICO_POR_TIPO[novoServico.tipo].nome}</p>
+                    <p>{novoServico.nome || SERVICE_BY_TYPE[novoServico.tipo].nome}</p>
+                    <p className="text-xs text-zinc-400">Referência visual: {SERVICE_BY_TYPE[novoServico.tipo].nome}</p>
                   </div>
                 </div>
 
                 <button
                   type="button"
-                  onClick={adicionarServico}
-                  className="px-4 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                  onClick={assinaturaPremiumLiberada ? adicionarServico : abrirPlanos}
+                  className={`px-4 py-2 rounded-lg border ${assinaturaPremiumLiberada ? 'border-zinc-700 hover:bg-zinc-800' : 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15'}`}
                 >
-                  Novo serviço
+                  {assinaturaPremiumLiberada ? 'Novo serviço' : 'Liberar com assinatura'}
                 </button>
               </div>
 
@@ -1023,9 +1265,31 @@ export default function ConfigurarPage() {
                   {servicos.map((servico) => (
                     <div key={servico.id} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <img src={servico.imagem} alt={servico.nome} className="w-12 h-12 rounded-lg object-cover border border-zinc-700" />
+                        {getServiceImageByName(servico.nome, servico.imagem) ? (
+                          <img
+                            src={getServiceImageByName(servico.nome, servico.imagem) || ''}
+                            alt={servico.nome}
+                            className="w-12 h-12 rounded-lg object-cover border border-zinc-700"
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-zinc-700 bg-zinc-900 text-[10px] text-zinc-400">
+                            Sem foto
+                          </div>
+                        )}
                         <div>
-                          <p className="font-medium text-white">{servico.nome}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium text-white">{servico.nome}</p>
+                            {servico.pausado_por_assinatura && (
+                              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+                                Pausado pela assinatura
+                              </span>
+                            )}
+                            {!servico.pausado_por_assinatura && servico.ativo === false && (
+                              <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
+                                Inativo
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-zinc-400">{servico.duracao_minutos} min</p>
                         </div>
                       </div>
@@ -1098,39 +1362,84 @@ export default function ConfigurarPage() {
             </div>
 
             <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
-              <h2 className="font-medium">Profissionais</h2>
-              <p className="text-sm text-zinc-400">Adicione os barbeiros que atendem na barbearia.</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="font-medium">Profissionais</h2>
+                  <p className="text-sm text-zinc-400">Adicione os barbeiros que atendem na barbearia.</p>
+                </div>
+                {!assinaturaPremiumLiberada && (
+                  <button
+                    type="button"
+                    onClick={abrirPlanos}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-500/15"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Novos barbeiros exigem assinatura
+                  </button>
+                )}
+                {assinaturaPremiumLiberada && equipeAtingiuLimitePlano && (
+                  <button
+                    type="button"
+                    onClick={abrirPlanos}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-500/15"
+                  >
+                    <Wallet className="h-3.5 w-3.5" />
+                    Ampliar plano para mais barbeiros
+                  </button>
+                )}
+              </div>
+
+              {assinaturaPremiumLiberada && limiteProfissionaisPlano > 0 && (
+                <div className={`rounded-lg border px-3 py-2 text-sm ${equipeAtingiuLimitePlano ? 'border-amber-500/20 bg-amber-500/10 text-amber-100' : 'border-zinc-800 bg-zinc-950 text-zinc-300'}`}>
+                  {equipeAtingiuLimitePlano
+                    ? formatarMensagemLimiteProfissionais(limiteProfissionaisPlano)
+                    : `Plano atual: até ${limiteProfissionaisPlano} ${limiteProfissionaisPlano === 1 ? 'barbeiro' : 'barbeiros'} na equipe.`}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <input
                   type="text"
                   value={novoProfissional.nome}
+                  disabled={!assinaturaPremiumLiberada}
                   onChange={(e) => setNovoProfissional((prev) => ({ ...prev, nome: e.target.value }))}
-                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder="Nome"
                 />
                 <input
                   type="text"
                   value={novoProfissional.cargo}
+                  disabled={!assinaturaPremiumLiberada}
                   onChange={(e) => setNovoProfissional((prev) => ({ ...prev, cargo: e.target.value }))}
-                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder="Cargo"
                 />
                 <input
                   type="text"
                   value={novoProfissional.experiencia}
+                  disabled={!assinaturaPremiumLiberada}
                   onChange={(e) => setNovoProfissional((prev) => ({ ...prev, experiencia: e.target.value }))}
-                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white"
+                  className="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder="Ex: 6 anos"
                 />
               </div>
 
               <button
                 type="button"
-                onClick={adicionarProfissional}
-                className="px-4 py-2 rounded-lg border border-zinc-700 hover:bg-zinc-800"
+                onClick={assinaturaPremiumLiberada ? (equipeAtingiuLimitePlano ? abrirPlanos : adicionarProfissional) : abrirPlanos}
+                className={`px-4 py-2 rounded-lg border ${
+                  !assinaturaPremiumLiberada
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15'
+                    : equipeAtingiuLimitePlano
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15'
+                      : 'border-zinc-700 hover:bg-zinc-800'
+                }`}
               >
-                Adicionar profissional
+                {!assinaturaPremiumLiberada
+                  ? 'Liberar com assinatura'
+                  : equipeAtingiuLimitePlano
+                    ? 'Ampliar plano'
+                    : 'Adicionar profissional'}
               </button>
 
               {profissionais.length > 0 && (

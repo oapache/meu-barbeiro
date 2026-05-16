@@ -1,4 +1,4 @@
-# Plano de Desenvolvimento - Meu Barbeiro
+# Plano de Desenvolvimento - O Corte Certo
 
 ## Prioridade 1: Conexão Frontend-Backend
 

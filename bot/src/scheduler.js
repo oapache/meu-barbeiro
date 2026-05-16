@@ -6,6 +6,7 @@ const { getQueueDepths } = require('./queues/whatsappQueues');
 const { runSchedulerTick } = require('./services/baileysRuntime');
 const { markStaleChatbotSessionsAsAbandoned } = require('./services/chatbotTraining');
 const { listActiveSessionIds } = require('./services/botStateStore');
+const { reconcileFromBackend } = require('./services/backendReconciler');
 
 let running = false;
 
@@ -18,6 +19,10 @@ async function tick() {
     const queueDepths = await getQueueDepths().catch(() => null);
     const scheduler = await runSchedulerTick();
     const activeSessionIds = await listActiveSessionIds().catch(() => []);
+    const backendSync = await reconcileFromBackend().catch((error) => ({
+      ok: false,
+      error: error?.message,
+    }));
 
     for (const barbeariaId of activeSessionIds) {
       await markStaleChatbotSessionsAsAbandoned(barbeariaId, config.bot.staleSessionMinutes)
@@ -32,6 +37,7 @@ async function tick() {
     console.log('[BOT_SCHEDULER] Tick concluido', {
       redis,
       queueDepths,
+      backendSync,
       activeSessions: scheduler.activeSessions,
       localRuntimeSessions: scheduler.localRuntimeSessions,
     });

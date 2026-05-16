@@ -1,8 +1,31 @@
 require('dotenv').config();
 
+function parseList(value, fallback = []) {
+  const items = String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items : fallback;
+}
+
+const appUrl = process.env.APP_URL || 'https://ocortecerto.com';
+const apiUrl = process.env.API_PUBLIC_URL || 'https://api.ocortecerto.com';
+
 module.exports = {
   port: process.env.PORT || 3001,
   nodeEnv: process.env.NODE_ENV || 'development',
+  appUrl,
+  apiUrl,
+  cors: {
+    origins: parseList(process.env.CORS_ORIGIN, [
+      appUrl,
+      'https://www.ocortecerto.com',
+      apiUrl,
+      'http://localhost:3000',
+      'http://localhost:3001',
+    ]),
+  },
   
   // Supabase
   supabase: {
@@ -20,7 +43,7 @@ module.exports = {
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
-    appUrl: process.env.APP_URL || 'http://localhost:3000',
+    appUrl,
     prices: {
       professionals_1: process.env.STRIPE_PRICE_ID_1_PRO || '',
       professionals_2_5: process.env.STRIPE_PRICE_ID_2_5_PRO || '',
@@ -33,5 +56,10 @@ module.exports = {
       professionals_6_15: process.env.STRIPE_PROMO_COUPON_6_15_PRO || '',
       professionals_15_plus: process.env.STRIPE_PROMO_COUPON_15_PLUS_PRO || '',
     }
+  },
+
+  bot: {
+    serviceUrl: process.env.BOT_SERVICE_URL || '',
+    serviceToken: process.env.BOT_SERVICE_TOKEN || '',
   }
 };
