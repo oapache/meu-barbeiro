@@ -128,7 +128,7 @@ function extractTextMessage(message = {}) {
 }
 
 function limparJidParaTelefone(jid = '') {
-  return WhatsAppService.limparTelefone(String(jid || '').split('@')[0]);
+  return WhatsAppService.limparTelefone(String(jid || '').split('@')[0].split(':')[0]);
 }
 
 function jidParaTelefoneDestino(phoneNumber = '') {
