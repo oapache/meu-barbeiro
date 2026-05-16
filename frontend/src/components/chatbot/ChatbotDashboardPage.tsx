@@ -307,6 +307,7 @@ export default function ChatbotDashboardPage() {
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [subscriptionResumo, setSubscriptionResumo] = useState<ChatbotSubscriptionResumo | null>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
+  const [subscriptionCheckFailed, setSubscriptionCheckFailed] = useState(false)
   const [metrics, setMetrics] = useState<ChatbotMetrics | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [queueOnly, setQueueOnly] = useState(false)
@@ -341,7 +342,7 @@ export default function ChatbotDashboardPage() {
     barbearia?.subscription_status ||
     ''
   ).trim()
-  const assinaturaPermiteOperacaoBot = BOT_SUBSCRIPTION_ALLOWED_STATUSES.includes(assinaturaStatusAtual)
+  const assinaturaPermiteOperacaoBot = subscriptionCheckFailed || BOT_SUBSCRIPTION_ALLOWED_STATUSES.includes(assinaturaStatusAtual)
 
   const barbeariaResolvida = !barbeariaLoading && !authLoading
 
@@ -604,12 +605,12 @@ export default function ChatbotDashboardPage() {
       }
 
       setSubscriptionLoading(true)
+      setSubscriptionCheckFailed(false)
 
       try {
         const resposta = await ApiService.getCurrentSubscription({
           userId: user.id,
           barbeariaId,
-          refreshFromStripe: true,
         })
 
         if (!ativo) return
@@ -617,6 +618,7 @@ export default function ChatbotDashboardPage() {
       } catch {
         if (!ativo) return
         setSubscriptionResumo(null)
+        setSubscriptionCheckFailed(true)
       } finally {
         if (ativo) setSubscriptionLoading(false)
       }
