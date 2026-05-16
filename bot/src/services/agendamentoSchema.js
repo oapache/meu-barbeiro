@@ -4,6 +4,54 @@ let ensurePromise = null;
 
 async function executarGarantiasSchema() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS servicos (
+      id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+      barbearia_id CHAR(36),
+      nome VARCHAR(255) NOT NULL,
+      descricao TEXT,
+      imagem_url TEXT,
+      preco DECIMAL(10, 2) NOT NULL DEFAULT 0,
+      duracao_minutos INTEGER DEFAULT 30,
+      ativo TINYINT(1) DEFAULT true,
+      pausado_por_assinatura TINYINT(1) DEFAULT false,
+      ativo_antes_pausa_assinatura TINYINT(1),
+      created_at DATETIME DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agendamentos (
+      id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+      barbearia_id CHAR(36),
+      servico_id CHAR(36),
+      cliente_id CHAR(36),
+      cliente_nome_externo TEXT,
+      cliente_telefone_externo VARCHAR(20),
+      barbeiro_id CHAR(36),
+      data DATE NOT NULL,
+      hora TIME NOT NULL,
+      status VARCHAR(20) DEFAULT 'pendente',
+      chatbot_session_id CHAR(36),
+      servico_nome_snapshot TEXT,
+      servico_preco_snapshot NUMERIC(10,2),
+      avaliacao_nota INTEGER,
+      avaliacao_comentario TEXT,
+      avaliacao_registrada_em DATETIME,
+      observacoes TEXT,
+      origem VARCHAR(30) DEFAULT 'app',
+      created_at DATETIME DEFAULT NOW(),
+      updated_at DATETIME DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    ALTER TABLE servicos
+    ADD COLUMN IF NOT EXISTS imagem_url TEXT,
+    ADD COLUMN IF NOT EXISTS pausado_por_assinatura TINYINT(1) DEFAULT false,
+    ADD COLUMN IF NOT EXISTS ativo_antes_pausa_assinatura TINYINT(1)
+  `);
+
+  await pool.query(`
     ALTER TABLE agendamentos
     ADD COLUMN IF NOT EXISTS cliente_nome_externo TEXT,
     ADD COLUMN IF NOT EXISTS cliente_telefone_externo VARCHAR(20),
