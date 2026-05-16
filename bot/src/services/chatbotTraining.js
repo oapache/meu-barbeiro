@@ -613,7 +613,6 @@ async function listChatbotSessions({
     params
   );
 
-  params.push(safeLimit, safeOffset);
   const rowsResult = await pool.query(
     `SELECT
        s.id,
@@ -673,8 +672,8 @@ async function listChatbotSessions({
      ) tstats ON tstats.session_id = s.id
      ${whereSql}
      ORDER BY s.updated_at DESC, s.created_at DESC
-     LIMIT $${params.length - 1}
-     OFFSET $${params.length}`,
+     LIMIT ${safeLimit}
+     OFFSET ${safeOffset}`,
     params
   );
 
