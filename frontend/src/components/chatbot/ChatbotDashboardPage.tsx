@@ -71,6 +71,15 @@ type ChatbotSettings = {
   enabled?: boolean
 }
 
+type ChatbotSubscriptionResumo = {
+  status?: string
+  plan_key?: string
+  subscription?: {
+    status?: string
+    plan_key?: string
+  }
+}
+
 type ChatbotMetrics = {
   live_conversations?: number
   human_handoff_open?: number
@@ -197,6 +206,7 @@ const STATUS_META: Record<BotStatus, { label: string; className: string }> = {
 const STORAGE_PHONE_PREFIX = 'meu-barbeiro-chatbot-phone'
 const CHATBOT_STATUS_REFRESH_INTERVAL_MS = 10000
 const CHATBOT_PANEL_REFRESH_INTERVAL_MS = 60000
+const BOT_SUBSCRIPTION_ALLOWED_STATUSES = ['active', 'trialing', 'past_due', 'grace_period']
 const REVIEW_REASON_LABELS: Record<string, string> = {
   send_failure: 'Falha de envio',
   abandoned: 'Abandono',
@@ -295,6 +305,8 @@ export default function ChatbotDashboardPage() {
   const [settings, setSettings] = useState<ChatbotSettings | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
+  const [subscriptionResumo, setSubscriptionResumo] = useState<ChatbotSubscriptionResumo | null>(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [metrics, setMetrics] = useState<ChatbotMetrics | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
   const [queueOnly, setQueueOnly] = useState(false)
@@ -323,9 +335,13 @@ export default function ChatbotDashboardPage() {
   const telefonePublicoLabel = formatarTelefone(numeroPublicoBarbearia)
   const connectedPhoneLabel = formatarTelefone(bot?.phoneNumber || '')
   const chatbotEnabled = settings?.enabled ?? barbearia?.chatbot_enabled ?? true
-  const assinaturaPermiteOperacaoBot = ['active', 'trialing', 'past_due'].includes(
-    String(barbearia?.subscription_status || '').trim()
-  )
+  const assinaturaStatusAtual = String(
+    subscriptionResumo?.status ||
+    subscriptionResumo?.subscription?.status ||
+    barbearia?.subscription_status ||
+    ''
+  ).trim()
+  const assinaturaPermiteOperacaoBot = BOT_SUBSCRIPTION_ALLOWED_STATUSES.includes(assinaturaStatusAtual)
 
   const barbeariaResolvida = !barbeariaLoading && !authLoading
 
@@ -347,10 +363,16 @@ export default function ChatbotDashboardPage() {
           description: 'O atendimento automático desta barbearia está pausado. Reative quando quiser voltar a receber mensagens.',
           className: 'border-zinc-600 bg-zinc-900 text-zinc-100',
         }
+    : subscriptionLoading
+      ? {
+          title: 'Validando assinatura',
+          description: 'Estamos conferindo se o teste grátis ou o plano atual libera a conexão do WhatsApp.',
+          className: 'border-sky-500/30 bg-sky-500/10 text-sky-100',
+        }
     : !assinaturaPermiteOperacaoBot
       ? {
-          title: 'Assinatura necessária para manter o bot conectado',
-          description: bot?.lastMessage || 'Quando a assinatura vence, o bot do WhatsApp é desconectado automaticamente até a regularização do plano.',
+          title: 'Teste grátis ou assinatura necessária',
+          description: 'Ative o teste grátis ou regularize o plano para conectar o bot do WhatsApp.',
           className: 'border-red-500/30 bg-red-500/10 text-red-100',
         }
     : statusExibido === 'starting'
@@ -570,6 +592,42 @@ export default function ChatbotDashboardPage() {
       ativo = false
     }
   }, [authLoading, user?.id])
+
+  useEffect(() => {
+    let ativo = true
+
+    const carregarAssinatura = async () => {
+      if (!barbeariaId || !user?.id) {
+        setSubscriptionResumo(null)
+        setSubscriptionLoading(false)
+        return
+      }
+
+      setSubscriptionLoading(true)
+
+      try {
+        const resposta = await ApiService.getCurrentSubscription({
+          userId: user.id,
+          barbeariaId,
+          refreshFromStripe: true,
+        })
+
+        if (!ativo) return
+        setSubscriptionResumo(resposta || null)
+      } catch {
+        if (!ativo) return
+        setSubscriptionResumo(null)
+      } finally {
+        if (ativo) setSubscriptionLoading(false)
+      }
+    }
+
+    carregarAssinatura()
+
+    return () => {
+      ativo = false
+    }
+  }, [barbeariaId, user?.id])
 
   useEffect(() => {
     if (!barbeariaId) {
@@ -1186,6 +1244,7 @@ export default function ChatbotDashboardPage() {
                 disabled={
                   loadingAction !== '' ||
                   barbeariaLoading ||
+                  subscriptionLoading ||
                   !phoneNumberDigits ||
                   !barbeariaConfigurada ||
                   !assinaturaPermiteOperacaoBot ||
@@ -1201,6 +1260,7 @@ export default function ChatbotDashboardPage() {
                 disabled={
                   loadingAction !== '' ||
                   barbeariaLoading ||
+                  subscriptionLoading ||
                   !phoneNumberDigits ||
                   !barbeariaConfigurada ||
                   !assinaturaPermiteOperacaoBot ||
