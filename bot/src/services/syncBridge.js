@@ -23,6 +23,27 @@ function jsonValue(value, fallback) {
   return value;
 }
 
+function mysqlDateTime(value) {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 19).replace('T', ' ');
+  }
+
+  const normalized = text(value);
+  if (!normalized) return null;
+
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 async function ensureSyncSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS usuarios (
@@ -211,9 +232,9 @@ async function upsertUser(user = {}) {
       nullableText(user.stripe_customer_id),
       text(user.subscription_plan) || 'free',
       text(user.subscription_status) || 'inactive',
-      user.subscription_trial_ends_at || null,
-      user.subscription_grace_ends_at || null,
-      user.subscription_current_period_end || null,
+      mysqlDateTime(user.subscription_trial_ends_at),
+      mysqlDateTime(user.subscription_grace_ends_at),
+      mysqlDateTime(user.subscription_current_period_end),
     ]
   );
 
@@ -273,7 +294,7 @@ async function upsertBarbearia(barbearia = {}) {
       Number(barbearia.total_avaliacoes || 0),
       text(barbearia.subscription_plan) || 'free',
       text(barbearia.subscription_status) || 'inactive',
-      barbearia.premium_locked_at || null,
+      mysqlDateTime(barbearia.premium_locked_at),
       text(barbearia.chatbot_mode) || 'legacy',
       barbearia.chatbot_enabled === false ? false : true,
     ]
@@ -330,9 +351,9 @@ async function upsertSubscription(subscription = {}) {
       nullableText(subscription.stripe_price_id),
       text(subscription.plan_key) || 'free',
       text(subscription.status) || 'inactive',
-      subscription.trial_end || null,
-      subscription.current_period_start || null,
-      subscription.current_period_end || null,
+      mysqlDateTime(subscription.trial_end),
+      mysqlDateTime(subscription.current_period_start),
+      mysqlDateTime(subscription.current_period_end),
       subscription.cancel_at_period_end === true,
       text(subscription.provider) || 'stripe',
       text(subscription.payment_method) || 'card',
