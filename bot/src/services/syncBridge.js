@@ -96,6 +96,70 @@ async function ensureSyncSchema() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await pool.query(`
+    ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS senha_hash VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS telefone VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) DEFAULT 'cliente',
+    ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+    ADD COLUMN IF NOT EXISTS preferencias JSON DEFAULT (JSON_OBJECT()),
+    ADD COLUMN IF NOT EXISTS tax_id TEXT,
+    ADD COLUMN IF NOT EXISTS billing_address JSON DEFAULT (JSON_OBJECT()),
+    ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT,
+    ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(255) DEFAULT 'free',
+    ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(255) DEFAULT 'inactive',
+    ADD COLUMN IF NOT EXISTS subscription_trial_ends_at DATETIME,
+    ADD COLUMN IF NOT EXISTS subscription_grace_ends_at DATETIME,
+    ADD COLUMN IF NOT EXISTS subscription_current_period_end DATETIME,
+    ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  `);
+
+  await pool.query(`
+    ALTER TABLE barbearias
+    ADD COLUMN IF NOT EXISTS usuario_id CHAR(36),
+    ADD COLUMN IF NOT EXISTS telefone VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS endereco TEXT,
+    ADD COLUMN IF NOT EXISTS logo_url TEXT,
+    ADD COLUMN IF NOT EXISTS horario_abertura TIME DEFAULT '09:00:00',
+    ADD COLUMN IF NOT EXISTS horario_fechamento TIME DEFAULT '20:00:00',
+    ADD COLUMN IF NOT EXISTS horarios_semana JSON,
+    ADD COLUMN IF NOT EXISTS whatsapp_link TEXT,
+    ADD COLUMN IF NOT EXISTS nota_media DECIMAL(10, 2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS total_avaliacoes INT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(255) DEFAULT 'free',
+    ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(255) DEFAULT 'inactive',
+    ADD COLUMN IF NOT EXISTS premium_locked_at DATETIME,
+    ADD COLUMN IF NOT EXISTS chatbot_mode VARCHAR(255) DEFAULT 'legacy',
+    ADD COLUMN IF NOT EXISTS chatbot_enabled TINYINT(1) DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  `);
+
+  await pool.query(`
+    ALTER TABLE assinaturas
+    ADD COLUMN IF NOT EXISTS barbearia_id CHAR(36),
+    ADD COLUMN IF NOT EXISTS usuario_id CHAR(36),
+    ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT,
+    ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS stripe_price_id TEXT,
+    ADD COLUMN IF NOT EXISTS plan_key TEXT,
+    ADD COLUMN IF NOT EXISTS status VARCHAR(255) DEFAULT 'inactive',
+    ADD COLUMN IF NOT EXISTS trial_end DATETIME,
+    ADD COLUMN IF NOT EXISTS current_period_start DATETIME,
+    ADD COLUMN IF NOT EXISTS current_period_end DATETIME,
+    ADD COLUMN IF NOT EXISTS cancel_at_period_end TINYINT(1) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS provider VARCHAR(255) DEFAULT 'stripe',
+    ADD COLUMN IF NOT EXISTS payment_method VARCHAR(255) DEFAULT 'card',
+    ADD COLUMN IF NOT EXISTS provider_customer_id TEXT,
+    ADD COLUMN IF NOT EXISTS provider_subscription_id TEXT,
+    ADD COLUMN IF NOT EXISTS provider_price_id TEXT,
+    ADD COLUMN IF NOT EXISTS provider_checkout_url TEXT,
+    ADD COLUMN IF NOT EXISTS provider_payload JSON DEFAULT (JSON_OBJECT()),
+    ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  `);
 }
 
 async function upsertUser(user = {}) {
