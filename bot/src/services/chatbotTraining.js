@@ -140,12 +140,38 @@ async function ensureChatbotTrainingSchema() {
 
       await pool.query(`
         ALTER TABLE whatsapp_chatbot_sessions
+        ADD COLUMN IF NOT EXISTS phone_hash VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS phone_masked VARCHAR(32),
+        ADD COLUMN IF NOT EXISTS contact_name_masked TEXT,
+        ADD COLUMN IF NOT EXISTS entry_intent TEXT,
+        ADD COLUMN IF NOT EXISTS current_stage VARCHAR(255) DEFAULT 'idle',
+        ADD COLUMN IF NOT EXISTS status VARCHAR(255) DEFAULT 'active',
+        ADD COLUMN IF NOT EXISTS outcome_code TEXT,
+        ADD COLUMN IF NOT EXISTS agendamento_id CHAR(36),
         ADD COLUMN IF NOT EXISTS review_status VARCHAR(255) DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS reviewed_intent TEXT,
         ADD COLUMN IF NOT EXISTS review_notes TEXT,
         ADD COLUMN IF NOT EXISTS ideal_response TEXT,
         ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-        ADD COLUMN IF NOT EXISTS reviewed_at DATETIME
+        ADD COLUMN IF NOT EXISTS reviewed_at DATETIME,
+        ADD COLUMN IF NOT EXISTS started_at DATETIME DEFAULT NOW(),
+        ADD COLUMN IF NOT EXISTS ended_at DATETIME,
+        ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT NOW(),
+        ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT NOW()
+      `);
+
+      await pool.query(`
+        ALTER TABLE whatsapp_chatbot_turns
+        ADD COLUMN IF NOT EXISTS session_id CHAR(36),
+        ADD COLUMN IF NOT EXISTS direction TEXT,
+        ADD COLUMN IF NOT EXISTS text_masked TEXT,
+        ADD COLUMN IF NOT EXISTS stage_before TEXT,
+        ADD COLUMN IF NOT EXISTS stage_after TEXT,
+        ADD COLUMN IF NOT EXISTS detected_intent TEXT,
+        ADD COLUMN IF NOT EXISTS slots_json JSON DEFAULT (JSON_OBJECT()),
+        ADD COLUMN IF NOT EXISTS result_code TEXT,
+        ADD COLUMN IF NOT EXISTS send_status TEXT,
+        ADD COLUMN IF NOT EXISTS created_at DATETIME DEFAULT NOW()
       `);
     })().catch((error) => {
       ensureTrainingSchemaPromise = null;
