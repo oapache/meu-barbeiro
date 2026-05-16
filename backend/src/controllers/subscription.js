@@ -508,10 +508,10 @@ async function upsertAssinaturaFromStripe({
 
   await pool.query(
     `UPDATE usuarios
-     SET stripe_customer_id = COALESCE(NULLIF($1, ''), stripe_customer_id),
+     SET stripe_customer_id = COALESCE($1, stripe_customer_id),
          updated_at = NOW()
      WHERE id = $2`,
-    [normalizarTexto(stripeCustomerId), usuarioId]
+    [normalizarTexto(stripeCustomerId) || null, usuarioId]
   );
 }
 
