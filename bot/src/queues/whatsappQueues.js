@@ -53,7 +53,7 @@ function buildJobId(parts = []) {
   return parts
     .map((part) => String(part || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_'))
     .filter(Boolean)
-    .join(':');
+    .join('_');
 }
 
 async function getQueueDepths() {
