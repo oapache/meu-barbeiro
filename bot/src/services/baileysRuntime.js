@@ -131,7 +131,38 @@ function limparJidParaTelefone(jid = '') {
   return WhatsAppService.limparTelefone(String(jid || '').split('@')[0].split(':')[0]);
 }
 
-function jidParaTelefoneDestino(phoneNumber = '') {
+function normalizarJidDestino(jid = '') {
+  const valor = String(jid || '').trim();
+  const [usuarioComDispositivo, servidor] = valor.split('@');
+  const servidorNormalizado = String(servidor || '').trim();
+
+  if (!usuarioComDispositivo || !['s.whatsapp.net', 'lid'].includes(servidorNormalizado)) {
+    return '';
+  }
+
+  const usuario = WhatsAppService.limparTelefone(usuarioComDispositivo.split(':')[0].split('_')[0]);
+  if (!usuario) return '';
+
+  return `${usuario}@${servidorNormalizado}`;
+}
+
+function obterJidResposta(message = {}) {
+  return normalizarJidDestino(message?.key?.senderPn)
+    || normalizarJidDestino(message?.key?.participantPn)
+    || normalizarJidDestino(message?.key?.remoteJid);
+}
+
+function obterTelefoneContato(message = {}) {
+  const jidTelefone = normalizarJidDestino(message?.key?.senderPn)
+    || normalizarJidDestino(message?.key?.participantPn);
+
+  return limparJidParaTelefone(jidTelefone || message?.key?.remoteJid || '');
+}
+
+function jidParaTelefoneDestino(phoneNumber = '', destinationJid = '') {
+  const jidNormalizado = normalizarJidDestino(destinationJid);
+  if (jidNormalizado) return jidNormalizado;
+
   const normalizedPhone = WhatsAppService.limparTelefone(phoneNumber);
   return `${normalizedPhone}@s.whatsapp.net`;
 }
@@ -262,12 +293,14 @@ async function buildSocket(session) {
       const text = extractTextMessage(message);
       if (!text) continue;
 
-      const phoneNumber = limparJidParaTelefone(remoteJid);
-      if (!phoneNumber) continue;
+      const phoneNumber = obterTelefoneContato(message);
+      const destinationJid = obterJidResposta(message);
+      if (!phoneNumber && !destinationJid) continue;
 
       await enqueueInboundMessage({
         barbeariaId: session.barbeariaId,
         phoneNumber,
+        destinationJid,
         message: text,
         pushName: String(message.pushName || ''),
         messageId: String(message.key?.id || ''),
@@ -390,19 +423,21 @@ async function withContactLock(lockKey, task) {
   return current;
 }
 
-async function sendTextMessageNow({ barbeariaId, phoneNumber, message, telemetry = {} } = {}) {
+async function sendTextMessageNow({ barbeariaId, phoneNumber, destinationJid, message, telemetry = {} } = {}) {
   const normalizedBarbeariaId = normalizarBarbeariaId(barbeariaId, { required: true });
   const mensagem = String(message || '').trim();
   const telefone = String(phoneNumber || '').trim();
+  const jidDestino = normalizarJidDestino(destinationJid);
+  const normalizedPhone = WhatsAppService.limparTelefone(telefone || limparJidParaTelefone(jidDestino));
 
-  return withContactLock(`${normalizedBarbeariaId}:${WhatsAppService.limparTelefone(telefone)}`, async () => {
+  return withContactLock(`${normalizedBarbeariaId}:${normalizedPhone || jidDestino}`, async () => {
     const settings = await getChatbotOperationalSettings(normalizedBarbeariaId).catch(() => ({ enabled: true }));
 
     if (!mensagem) {
       return { sent: false, reason: 'EMPTY_MESSAGE', error: 'A mensagem do WhatsApp está vazia.', barbeariaId: normalizedBarbeariaId };
     }
 
-    if (!telefone || !WhatsAppService.validarTelefone(telefone)) {
+    if ((!telefone || !WhatsAppService.validarTelefone(telefone)) && !jidDestino) {
       return { sent: false, reason: 'INVALID_PHONE', error: 'Número de destino inválido para o WhatsApp.', barbeariaId: normalizedBarbeariaId };
     }
 
@@ -433,17 +468,18 @@ async function sendTextMessageNow({ barbeariaId, phoneNumber, message, telemetry
       };
     }
 
-    const normalizedPhone = WhatsAppService.limparTelefone(telefone);
     await new Promise((resolve) => setTimeout(resolve, randomSendDelay()));
 
     try {
-      const response = await session.sock.sendMessage(jidParaTelefoneDestino(normalizedPhone), { text: mensagem });
+      const chatId = jidParaTelefoneDestino(normalizedPhone, jidDestino);
+      const response = await session.sock.sendMessage(chatId, { text: mensagem });
       const result = {
         sent: true,
         phoneNumber: normalizedPhone,
+        destinationJid: chatId,
         messageId: String(response?.key?.id || ''),
         timestamp: Date.now(),
-        chatId: jidParaTelefoneDestino(normalizedPhone),
+        chatId,
         barbeariaId: normalizedBarbeariaId,
       };
 
@@ -494,6 +530,7 @@ async function sendTextMessageNow({ barbeariaId, phoneNumber, message, telemetry
         reason: 'SEND_FAILED',
         error: error?.message || 'Não foi possível enviar a mensagem pelo WhatsApp.',
         phoneNumber: normalizedPhone,
+        destinationJid: jidParaTelefoneDestino(normalizedPhone, jidDestino),
         barbeariaId: normalizedBarbeariaId,
       };
     }
@@ -514,6 +551,7 @@ async function processInboundMessage(job) {
       await queues.outbound.add('send-message', {
         barbeariaId: normalizedBarbeariaId,
         phoneNumber: payload.phoneNumber,
+        destinationJid: payload.destinationJid,
         message: reply,
         telemetry: {
           sessionId: metadata.sessionId,
