@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const pool = require('../config/database');
+const { ensureAgendamentoSchema } = require('./agendamentoSchema');
 
 function text(value) {
   return String(value || '').trim();
@@ -378,6 +379,92 @@ async function upsertSubscription(subscription = {}) {
   return { ok: true, barbearia_id: barbeariaId, status: text(subscription.status) || 'inactive' };
 }
 
+async function upsertService(service = {}) {
+  await ensureAgendamentoSchema();
+
+  const id = text(service.id);
+  const barbeariaId = text(service.barbearia_id || service.barbeariaId);
+  const nome = text(service.nome);
+
+  if (!id || !barbeariaId || !nome) {
+    const error = new Error('Payload de serviço inválido para sincronização.');
+    error.code = 'SYNC_SERVICE_INVALID';
+    throw error;
+  }
+
+  await pool.query(
+    `INSERT INTO servicos (
+       id, barbearia_id, nome, descricao, imagem_url, preco, duracao_minutos,
+       ativo, pausado_por_assinatura, ativo_antes_pausa_assinatura
+     )
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON DUPLICATE KEY UPDATE
+       barbearia_id = VALUES(barbearia_id),
+       nome = VALUES(nome),
+       descricao = VALUES(descricao),
+       imagem_url = VALUES(imagem_url),
+       preco = VALUES(preco),
+       duracao_minutos = VALUES(duracao_minutos),
+       ativo = VALUES(ativo),
+       pausado_por_assinatura = VALUES(pausado_por_assinatura),
+       ativo_antes_pausa_assinatura = VALUES(ativo_antes_pausa_assinatura)`,
+    [
+      id,
+      barbeariaId,
+      nome,
+      nullableText(service.descricao),
+      nullableText(service.imagem_url),
+      Number(service.preco || 0),
+      Number(service.duracao_minutos || 30),
+      service.ativo === false ? false : true,
+      service.pausado_por_assinatura === true,
+      service.ativo_antes_pausa_assinatura === null || service.ativo_antes_pausa_assinatura === undefined
+        ? null
+        : service.ativo_antes_pausa_assinatura === true,
+    ]
+  );
+
+  return { ok: true, service_id: id };
+}
+
+async function syncServices(barbeariaId, services = []) {
+  await ensureAgendamentoSchema();
+
+  const normalizedBarbeariaId = text(barbeariaId);
+  const items = Array.isArray(services) ? services : [];
+  const synced = [];
+
+  for (const service of items) {
+    synced.push(await upsertService({
+      ...service,
+      barbearia_id: text(service?.barbearia_id || service?.barbeariaId) || normalizedBarbeariaId,
+    }));
+  }
+
+  const ids = items.map((service) => text(service?.id)).filter(Boolean);
+  if (normalizedBarbeariaId) {
+    if (ids.length === 0) {
+      await pool.query(
+        `UPDATE servicos
+         SET ativo = false
+         WHERE barbearia_id = $1`,
+        [normalizedBarbeariaId]
+      );
+    } else {
+      const placeholders = ids.map((_, index) => `$${index + 2}`).join(', ');
+      await pool.query(
+        `UPDATE servicos
+         SET ativo = false
+         WHERE barbearia_id = $1
+           AND id NOT IN (${placeholders})`,
+        [normalizedBarbeariaId, ...ids]
+      );
+    }
+  }
+
+  return { ok: true, count: synced.length };
+}
+
 async function bootstrapBarbershop(payload = {}) {
   const results = {};
 
@@ -393,6 +480,11 @@ async function bootstrapBarbershop(payload = {}) {
     results.subscription = await upsertSubscription(payload.subscription);
   }
 
+  if (Array.isArray(payload.services)) {
+    const barbeariaId = text(payload.barbearia?.id || payload.services?.[0]?.barbearia_id);
+    results.services = await syncServices(barbeariaId, payload.services);
+  }
+
   return { ok: true, synced: results };
 }
 
@@ -401,5 +493,7 @@ module.exports = {
   upsertUser,
   upsertBarbearia,
   upsertSubscription,
+  upsertService,
+  syncServices,
   bootstrapBarbershop,
 };

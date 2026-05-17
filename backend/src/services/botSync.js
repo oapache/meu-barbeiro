@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { ensureServicoAvailabilitySchema } = require('./servicoAvailability');
 const {
   syncBotUser,
   bootstrapBotBarbearia,
@@ -94,9 +95,31 @@ function serializeSubscription(row = {}, fallback = {}) {
   };
 }
 
+function serializeService(row = {}) {
+  if (!row?.id) return null;
+
+  return {
+    id: row.id,
+    barbearia_id: row.barbearia_id,
+    nome: row.nome,
+    descricao: row.descricao || '',
+    imagem_url: row.imagem_url || '',
+    preco: Number(row.preco || 0),
+    duracao_minutos: Number(row.duracao_minutos || 30),
+    ativo: row.ativo !== false,
+    pausado_por_assinatura: row.pausado_por_assinatura === true,
+    ativo_antes_pausa_assinatura:
+      row.ativo_antes_pausa_assinatura === null || row.ativo_antes_pausa_assinatura === undefined
+        ? null
+        : row.ativo_antes_pausa_assinatura === true,
+  };
+}
+
 async function getBarbeariaSyncPayload(barbeariaId) {
   const id = text(barbeariaId);
   if (!id) return null;
+
+  await ensureServicoAvailabilitySchema();
 
   const barbeariaResult = await pool.query(
     `SELECT *
@@ -128,6 +151,15 @@ async function getBarbeariaSyncPayload(barbeariaId) {
     [id]
   );
 
+  const servicosResult = await pool.query(
+    `SELECT id, barbearia_id, nome, descricao, imagem_url, preco, duracao_minutos,
+            ativo, pausado_por_assinatura, ativo_antes_pausa_assinatura
+     FROM servicos
+     WHERE barbearia_id = $1
+     ORDER BY nome`,
+    [id]
+  );
+
   const userPayload = serializeUser(usuarioResult.rows?.[0]);
   const barbeariaPayload = serializeBarbearia(barbearia);
   const subscriptionPayload = serializeSubscription(assinaturaResult.rows?.[0], {
@@ -141,6 +173,7 @@ async function getBarbeariaSyncPayload(barbeariaId) {
     user: userPayload,
     barbearia: barbeariaPayload,
     subscription: subscriptionPayload,
+    services: (servicosResult.rows || []).map(serializeService).filter(Boolean),
   };
 }
 

@@ -6,7 +6,8 @@ async function ensureServicoAvailabilitySchema() {
   await pool.query(`
     ALTER TABLE servicos
     ADD COLUMN IF NOT EXISTS pausado_por_assinatura TINYINT(1) DEFAULT false,
-    ADD COLUMN IF NOT EXISTS ativo_antes_pausa_assinatura TINYINT(1)
+    ADD COLUMN IF NOT EXISTS ativo_antes_pausa_assinatura TINYINT(1),
+    ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   `);
 }
 
@@ -32,8 +33,9 @@ async function pauseServicosBySubscription(barbeariaId) {
            WHEN pausado_por_assinatura THEN ativo_antes_pausa_assinatura
            ELSE ativo
          END,
-         pausado_por_assinatura = true,
-         ativo = false
+          pausado_por_assinatura = true,
+          ativo = false,
+          updated_at = NOW()
      WHERE barbearia_id = $1`,
     [barbeariaId]
   );
@@ -46,9 +48,10 @@ async function resumeServicosBySubscription(barbeariaId) {
 
   await pool.query(
     `UPDATE servicos
-     SET ativo = COALESCE(ativo_antes_pausa_assinatura, ativo),
-         pausado_por_assinatura = false,
-         ativo_antes_pausa_assinatura = NULL
+      SET ativo = COALESCE(ativo_antes_pausa_assinatura, ativo),
+          pausado_por_assinatura = false,
+          ativo_antes_pausa_assinatura = NULL,
+          updated_at = NOW()
      WHERE barbearia_id = $1
        AND pausado_por_assinatura = true`,
     [barbeariaId]

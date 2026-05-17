@@ -1,6 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const { getBarbeariaSyncPayload } = require('../services/botSync');
+const { ensureServicoAvailabilitySchema } = require('../services/servicoAvailability');
 const pool = require('../config/database');
 
 const router = express.Router();
@@ -32,6 +33,8 @@ function parseSince(value) {
 }
 
 async function listChangedBarbeariaIds({ since, limit }) {
+  await ensureServicoAvailabilitySchema();
+
   if (!since) {
     const result = await pool.query(
       `SELECT id
@@ -60,11 +63,18 @@ async function listChangedBarbeariaIds({ since, limit }) {
 
        UNION
 
-       SELECT b.id, a.updated_at
-       FROM assinaturas a
-       INNER JOIN barbearias b ON b.id = a.barbearia_id
-       WHERE a.updated_at >= $1 OR a.created_at >= $1
-     ) changed
+        SELECT b.id, a.updated_at
+        FROM assinaturas a
+        INNER JOIN barbearias b ON b.id = a.barbearia_id
+        WHERE a.updated_at >= $1 OR a.created_at >= $1
+
+        UNION
+
+        SELECT b.id, s.updated_at
+        FROM servicos s
+        INNER JOIN barbearias b ON b.id = s.barbearia_id
+        WHERE s.updated_at >= $1 OR s.created_at >= $1
+      ) changed
      GROUP BY id
      ORDER BY MAX(updated_at) DESC
      LIMIT $2`,

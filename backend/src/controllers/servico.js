@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const { getBarbeariaSubscriptionAccess } = require('../services/subscriptionAccess');
 const { ensureServicoAvailabilitySchema } = require('../services/servicoAvailability');
 const { assertBarbeariaOwner, assertServicoOwner } = require('../services/ownership');
+const { safeSyncBarbeariaToBot } = require('../services/botSync');
 
 // Listar serviços de uma barbearia
 async function listServicos(req, res) {
@@ -54,6 +55,7 @@ async function createServico(req, res) {
     const { barbeariaId } = req.params;
     const { nome, descricao, imagem_url, preco, duracao_minutos } = req.body;
     await assertBarbeariaOwner(req.auth?.id, barbeariaId);
+    await ensureServicoAvailabilitySchema();
     
     if (!nome || !preco) {
       return res.status(400).json({ error: 'Nome e preço são obrigatórios' });
@@ -75,6 +77,8 @@ async function createServico(req, res) {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [barbeariaId, nome, descricao || null, imagem_url || null, preco, duracao_minutos || 30]
     );
+
+    await safeSyncBarbeariaToBot(barbeariaId);
     
     res.status(201).json({ servico: result.rows[0] });
   } catch (error) {
@@ -100,7 +104,7 @@ async function updateServico(req, res) {
     }
     
     const result = await pool.query(
-      `UPDATE servicos SET nome=$1, descricao=$2, imagem_url=$3, preco=$4, duracao_minutos=$5, ativo=$6
+      `UPDATE servicos SET nome=$1, descricao=$2, imagem_url=$3, preco=$4, duracao_minutos=$5, ativo=$6, updated_at=NOW()
        WHERE id=$7 RETURNING *`,
       [nome, descricao, imagem_url || null, preco, duracao_minutos, ativo !== undefined ? ativo : true, id]
     );
@@ -108,6 +112,8 @@ async function updateServico(req, res) {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Serviço não encontrado' });
     }
+
+    await safeSyncBarbeariaToBot(result.rows[0].barbearia_id);
     
     res.json({ servico: result.rows[0] });
   } catch (error) {
@@ -132,13 +138,15 @@ async function deleteServico(req, res) {
     }
     
     const result = await pool.query(
-      'UPDATE servicos SET ativo = false WHERE id = $1 RETURNING *',
+      'UPDATE servicos SET ativo = false, updated_at = NOW() WHERE id = $1 RETURNING *',
       [id]
     );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Serviço não encontrado' });
     }
+
+    await safeSyncBarbeariaToBot(servicoAtual.barbearia_id);
     
     res.json({ message: 'Serviço removido com sucesso' });
   } catch (error) {
