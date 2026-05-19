@@ -251,6 +251,7 @@ async function buildSocket(session) {
           loadingPercent: 0,
           isAuthenticated: false,
           lastError: '',
+          reconnectAttempts: 0,
           lastMessage: session.requestedPhoneNumber
             ? `QR Code gerado. Leia com o WhatsApp do número ${WhatsAppService.formatarTelefone(session.requestedPhoneNumber)}.`
             : 'QR Code gerado. Leia com o WhatsApp do bot.',
@@ -284,6 +285,7 @@ async function buildSocket(session) {
         pushName: String(sock.user?.name || sock.user?.verifiedName || ''),
         lastError: '',
         lastMessage: 'QR Code lido com sucesso. Bot conectado ao WhatsApp.',
+        reconnectAttempts: 0,
       });
     }
 
@@ -293,6 +295,10 @@ async function buildSocket(session) {
       const manuallyStopping = session.stopping === true;
       const shouldReconnect = !manuallyStopping && statusCode !== DisconnectReason.loggedOut;
       const disconnectMessage = lastDisconnect?.error?.message || '';
+      const currentState = await readBotState(session.barbeariaId);
+      const reconnectAttempts = shouldReconnect
+        ? Number(currentState.reconnectAttempts || 0) + 1
+        : 0;
 
       console.warn('[BAILEYS_RUNTIME] Sessão WhatsApp fechada', {
         barbeariaId: session.barbeariaId,
@@ -317,6 +323,7 @@ async function buildSocket(session) {
         lastError: shouldReconnect ? '' : disconnectMessage,
         disconnectReason: reasonName,
         disconnectStatusCode: statusCode,
+        reconnectAttempts,
       });
 
       deleteSession(session.barbeariaId);
@@ -634,28 +641,44 @@ async function processOutboundMessage(job) {
 async function processSessionJob(job) {
   const data = job.data || {};
 
-  if (job.name === 'start') {
-    return startRuntimeSession(data);
-  }
+  try {
+    if (job.name === 'start') {
+      return startRuntimeSession(data);
+    }
 
-  if (job.name === 'reset') {
-    return resetRuntimeSession(data);
-  }
+    if (job.name === 'reset') {
+      return resetRuntimeSession(data);
+    }
 
-  if (job.name === 'stop') {
-    return stopRuntimeSession(data);
-  }
+    if (job.name === 'stop') {
+      return stopRuntimeSession(data);
+    }
 
-  if (job.name === 'reconnect') {
-    const state = await readBotState(data.barbeariaId);
-    if (!state.requestedPhoneNumber) return state;
-    return startRuntimeSession({
-      barbeariaId: data.barbeariaId,
-      phoneNumber: state.requestedPhoneNumber,
-    });
-  }
+    if (job.name === 'reconnect') {
+      const state = await readBotState(data.barbeariaId);
+      if (!state.requestedPhoneNumber) return state;
+      return startRuntimeSession({
+        barbeariaId: data.barbeariaId,
+        phoneNumber: state.requestedPhoneNumber,
+      });
+    }
 
-  throw new Error(`Job de sessão desconhecido: ${job.name}`);
+    throw new Error(`Job de sessão desconhecido: ${job.name}`);
+  } catch (error) {
+    if (data.barbeariaId && ['start', 'reset', 'reconnect'].includes(job.name)) {
+      await writeBotState(data.barbeariaId, {
+        status: 'error',
+        loadingPercent: 0,
+        qrCodeDataUrl: '',
+        qrCodeText: '',
+        lastMessage: 'Não foi possível preparar a sessão do WhatsApp. Gere um novo QR Code e tente conectar novamente.',
+        lastError: error?.message || 'Falha ao preparar a sessão do WhatsApp.',
+      }).catch(() => undefined);
+      await removeActiveSession(data.barbeariaId).catch(() => undefined);
+    }
+
+    throw error;
+  }
 }
 
 async function runSchedulerTick() {
@@ -665,9 +688,9 @@ async function runSchedulerTick() {
   for (const barbeariaId of activeIds) {
     const state = await readBotState(barbeariaId);
     states.push(state);
+    const ageMs = state.updatedAt ? Date.now() - new Date(state.updatedAt).getTime() : null;
 
     if (state.status === 'qr_ready' && state.updatedAt) {
-      const ageMs = Date.now() - new Date(state.updatedAt).getTime();
       if (Number.isFinite(ageMs) && ageMs > config.bot.qrTtlMs) {
         await writeBotState(barbeariaId, {
           qrCodeDataUrl: '',
@@ -676,6 +699,32 @@ async function runSchedulerTick() {
           lastMessage: 'QR Code expirado. Gere um novo QR Code para conectar o WhatsApp.',
         });
       }
+    }
+
+    if (state.status === 'starting' && Number.isFinite(ageMs) && ageMs > config.bot.connectionStaleMs) {
+      const currentAttempts = Number(state.reconnectAttempts || 0);
+      const maxAttempts = Math.max(1, Number(config.bot.maxReconnectAttempts || 3));
+
+      if (currentAttempts >= maxAttempts) {
+        await writeBotState(barbeariaId, {
+          status: 'error',
+          loadingPercent: 0,
+          qrCodeDataUrl: '',
+          qrCodeText: '',
+          lastMessage: 'Não foi possível finalizar a conexão automaticamente. Gere um novo QR Code para conectar de forma limpa.',
+          lastError: 'Tempo limite ao preparar a sessão do WhatsApp.',
+        });
+        await removeActiveSession(barbeariaId).catch(() => undefined);
+        continue;
+      }
+
+      await writeBotState(barbeariaId, {
+        status: 'starting',
+        loadingPercent: 35,
+        reconnectAttempts: currentAttempts + 1,
+        lastMessage: `A conexão demorou mais que o esperado. Tentando reconectar automaticamente (${currentAttempts + 1}/${maxAttempts})...`,
+      });
+      await enqueueReconnectSession(barbeariaId, { reason: 'stale-starting' });
     }
 
     if (state.status === 'disconnected' && state.requestedPhoneNumber) {

@@ -80,6 +80,7 @@ async function startBot({ barbeariaId, phoneNumber } = {}) {
     lastError: '',
     lastMessage: `Solicitação de conexão enviada ao worker para ${WhatsAppService.formatarTelefone(requestedPhoneNumber)}...`,
     loadingPercent: 5,
+    reconnectAttempts: 0,
   });
 
   return enqueueSessionJob('start', {
@@ -115,6 +116,7 @@ async function resetBotSession({ barbeariaId, phoneNumber } = {}) {
     qrCodeText: '',
     lastMessage: `Solicitação de novo QR Code enviada ao worker para ${WhatsAppService.formatarTelefone(requestedPhoneNumber)}...`,
     loadingPercent: 5,
+    reconnectAttempts: 0,
   });
 
   return enqueueSessionJob('reset', {

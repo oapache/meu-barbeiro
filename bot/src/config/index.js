@@ -74,5 +74,7 @@ module.exports = {
     schedulerIntervalMs: Number(process.env.BOT_SCHEDULER_INTERVAL_MS || 60000),
     staleSessionMinutes: Number(process.env.BOT_STALE_SESSION_MINUTES || 180),
     qrTtlMs: Number(process.env.BOT_QR_TTL_MS || 120000),
+    connectionStaleMs: Number(process.env.BOT_CONNECTION_STALE_MS || 90000),
+    maxReconnectAttempts: Number(process.env.BOT_MAX_RECONNECT_ATTEMPTS || 3),
   },
 };
