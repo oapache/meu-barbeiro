@@ -9,16 +9,33 @@ function parseList(value, fallback = []) {
   return items.length > 0 ? items : fallback;
 }
 
+function unique(items = []) {
+  return Array.from(new Set(items.filter(Boolean)));
+}
+
+function originVariants(url = '') {
+  const origin = String(url || '').replace(/\/+$/, '');
+  if (!origin) return [];
+
+  const variants = [origin];
+  if (origin === 'https://ocortecerto.com') variants.push('https://www.ocortecerto.com');
+  if (origin === 'https://www.ocortecerto.com') variants.push('https://ocortecerto.com');
+
+  return variants;
+}
+
 const appUrl = process.env.APP_URL || 'https://ocortecerto.com';
 const backendApiUrl = String(process.env.BACKEND_API_URL || process.env.API_PUBLIC_URL || 'https://api.ocortecerto.com/api').replace(/\/+$/, '');
+const configuredCorsOrigins = parseList(process.env.CORS_ORIGIN);
 
 module.exports = {
   port: process.env.BOT_PORT || process.env.PORT || 3010,
   nodeEnv: process.env.NODE_ENV || 'production',
   appUrl,
   cors: {
-    origins: parseList(process.env.CORS_ORIGIN, [
-      appUrl,
+    origins: unique([
+      ...configuredCorsOrigins,
+      ...originVariants(appUrl),
       'https://api.ocortecerto.com',
       'http://localhost:3000',
       'http://localhost:3001',
