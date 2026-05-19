@@ -28,6 +28,10 @@ const { getQueues, buildJobId } = require('../queues/whatsappQueues');
 const WHATSAPP_BOT_ALLOWED_STATUSES = ['active', 'trialing', 'past_due'];
 const sessions = new Map();
 const contactLocks = new Map();
+const disconnectReasonNames = Object.entries(DisconnectReason || {}).reduce((acc, [name, value]) => {
+  acc[value] = name;
+  return acc;
+}, {});
 
 function normalizarBarbeariaId(barbeariaId, { required = false } = {}) {
   const valor = String(barbeariaId || '').trim();
@@ -70,6 +74,28 @@ function prepararTelefone(phoneNumber, { required = false } = {}) {
 
 function assinaturaPermiteBot(status) {
   return WHATSAPP_BOT_ALLOWED_STATUSES.includes(String(status || '').trim());
+}
+
+function getDisconnectStatusCode(lastDisconnect) {
+  return lastDisconnect?.error?.output?.statusCode
+    || lastDisconnect?.error?.status
+    || lastDisconnect?.error?.statusCode
+    || null;
+}
+
+function getDisconnectReasonName(statusCode) {
+  return disconnectReasonNames[statusCode] || String(statusCode || 'unknown');
+}
+
+async function enqueueReconnectSession(barbeariaId, { reason = 'reconnect' } = {}) {
+  const normalizedBarbeariaId = normalizarBarbeariaId(barbeariaId, { required: true });
+  const state = await readBotState(normalizedBarbeariaId);
+  if (!state.requestedPhoneNumber) return null;
+
+  const queues = getQueues();
+  return queues.session.add('reconnect', { barbeariaId: normalizedBarbeariaId }, {
+    jobId: buildJobId([reason, normalizedBarbeariaId, Date.now(), Math.random().toString(36).slice(2, 8)]),
+  });
 }
 
 function criarErroAssinaturaBloqueandoBot(status) {
@@ -262,21 +288,47 @@ async function buildSocket(session) {
     }
 
     if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      const statusCode = getDisconnectStatusCode(lastDisconnect);
+      const reasonName = getDisconnectReasonName(statusCode);
+      const manuallyStopping = session.stopping === true;
+      const shouldReconnect = !manuallyStopping && statusCode !== DisconnectReason.loggedOut;
+      const disconnectMessage = lastDisconnect?.error?.message || '';
+
+      console.warn('[BAILEYS_RUNTIME] Sessão WhatsApp fechada', {
+        barbeariaId: session.barbeariaId,
+        statusCode,
+        reasonName,
+        shouldReconnect,
+        manuallyStopping,
+        message: disconnectMessage,
+      });
+
       await writeBotState(session.barbeariaId, {
-        status: 'disconnected',
+        status: shouldReconnect ? 'starting' : 'disconnected',
         isAuthenticated: false,
         qrCodeDataUrl: '',
         qrCodeText: '',
-        phoneNumber: '',
-        pushName: '',
-        lastMessage: `Sessão desconectada${shouldReconnect ? '. Reconexão será tentada pelo scheduler.' : '.'}`,
-        lastError: lastDisconnect?.error?.message || '',
+        loadingPercent: shouldReconnect ? 35 : 0,
+        phoneNumber: shouldReconnect ? undefined : '',
+        pushName: shouldReconnect ? undefined : '',
+        lastMessage: shouldReconnect
+          ? 'O WhatsApp reiniciou a conexão. Tentando reconectar automaticamente...'
+          : 'Sessão desconectada.',
+        lastError: shouldReconnect ? '' : disconnectMessage,
+        disconnectReason: reasonName,
+        disconnectStatusCode: statusCode,
       });
 
       deleteSession(session.barbeariaId);
-      if (!shouldReconnect) {
+
+      if (shouldReconnect) {
+        await enqueueReconnectSession(session.barbeariaId, { reason: `close-${reasonName}` }).catch((error) => {
+          console.error('[BAILEYS_RUNTIME] Falha ao reenfileirar reconexão', {
+            barbeariaId: session.barbeariaId,
+            message: error?.message,
+          }, error);
+        });
+      } else {
         await removeActiveSession(session.barbeariaId);
       }
     }
@@ -360,6 +412,8 @@ async function stopRuntimeSession({ barbeariaId, logout = false, reasonMessage =
   const finalMessage = String(reasonMessage || '').trim() || (logout ? 'Sessão desconectada.' : 'Bot parado.');
 
   if (session?.sock) {
+    session.stopping = true;
+
     try {
       if (logout && typeof session.sock.logout === 'function') {
         await session.sock.logout();
@@ -625,10 +679,7 @@ async function runSchedulerTick() {
     }
 
     if (state.status === 'disconnected' && state.requestedPhoneNumber) {
-      const queues = getQueues();
-      await queues.session.add('reconnect', { barbeariaId }, {
-        jobId: buildJobId(['reconnect', barbeariaId]),
-      });
+      await enqueueReconnectSession(barbeariaId, { reason: 'scheduler-reconnect' });
     }
   }
 

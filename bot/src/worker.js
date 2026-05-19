@@ -68,7 +68,7 @@ async function enqueueSessionRecoveryOnStartup() {
     }
 
     await queues.session.add('reconnect', { barbeariaId }, {
-      jobId: buildJobId(['startup-reconnect', barbeariaId]),
+      jobId: buildJobId(['startup-reconnect', barbeariaId, Date.now(), Math.random().toString(36).slice(2, 8)]),
     });
     queued += 1;
   }
