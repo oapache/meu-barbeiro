@@ -1,6 +1,7 @@
 const express = require('express');
 const config = require('../config');
 const { getBarbeariaSyncPayload } = require('../services/botSync');
+const { ensureAgendamentoSchema } = require('../services/agendamentoSchema');
 const { ensureServicoAvailabilitySchema } = require('../services/servicoAvailability');
 const pool = require('../config/database');
 
@@ -30,6 +31,48 @@ function parseLimit(value) {
 function parseSince(value) {
   const date = new Date(String(value || ''));
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function text(value = '') {
+  return String(value || '').trim();
+}
+
+function nullableText(value = '') {
+  const normalized = text(value);
+  return normalized || null;
+}
+
+function normalizarData(value = '') {
+  const match = String(value || '').match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : '';
+}
+
+function normalizarHora(value = '') {
+  const match = String(value || '').match(/(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return '';
+  return `${match[1]}:${match[2]}:${match[3] || '00'}`;
+}
+
+function serializarAgendamentoPayload(payload = {}) {
+  const appointment = payload.appointment || payload.agendamento || payload;
+
+  return {
+    id: text(appointment.id),
+    barbearia_id: text(appointment.barbearia_id || appointment.barbeariaId),
+    servico_id: nullableText(appointment.servico_id || appointment.servicoId),
+    servico_nome_snapshot: nullableText(appointment.servico_nome_snapshot || appointment.servico_nome),
+    servico_preco_snapshot: Number(appointment.servico_preco_snapshot || appointment.servico_preco || 0),
+    cliente_id: nullableText(appointment.cliente_id || appointment.clienteId),
+    cliente_nome_externo: nullableText(appointment.cliente_nome_externo || appointment.cliente_nome),
+    cliente_telefone_externo: nullableText(appointment.cliente_telefone_externo || appointment.cliente_telefone),
+    barbeiro_id: nullableText(appointment.barbeiro_id || appointment.barbeiroId),
+    data: normalizarData(appointment.data),
+    hora: normalizarHora(appointment.hora),
+    status: text(appointment.status) || 'pendente',
+    chatbot_session_id: nullableText(appointment.chatbot_session_id || appointment.chatbotSessionId),
+    observacoes: nullableText(appointment.observacoes),
+    origem: text(appointment.origem) || 'whatsapp',
+  };
 }
 
 async function listChangedBarbeariaIds({ since, limit }) {
@@ -109,6 +152,129 @@ router.get('/sync/changes', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error?.message || 'Não foi possível listar mudanças para o bot.' });
+  }
+});
+
+router.post('/appointments', async (req, res) => {
+  try {
+    await ensureAgendamentoSchema();
+
+    const appointment = serializarAgendamentoPayload(req.body || {});
+
+    if (!appointment.id || !appointment.barbearia_id || !appointment.data || !appointment.hora) {
+      return res.status(400).json({
+        error: 'Agendamento inválido para sincronização.',
+        code: 'INVALID_APPOINTMENT_SYNC_PAYLOAD',
+      });
+    }
+
+    const barbeariaResult = await pool.query(
+      'SELECT id FROM barbearias WHERE id = $1 LIMIT 1',
+      [appointment.barbearia_id]
+    );
+
+    if (barbeariaResult.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Barbearia não encontrada para sincronizar o agendamento.',
+        code: 'BARBERSHOP_NOT_FOUND',
+      });
+    }
+
+    if (appointment.status !== 'cancelado') {
+      const conflito = await pool.query(
+        `SELECT id
+         FROM agendamentos
+         WHERE barbearia_id = $1
+           AND data = $2
+           AND hora = $3
+           AND status != $4
+           AND id != $5
+         LIMIT 1`,
+        [appointment.barbearia_id, appointment.data, appointment.hora, 'cancelado', appointment.id]
+      );
+
+      if (conflito.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Horário não disponível na agenda principal.',
+          code: 'TIME_CONFLICT',
+          existing_id: conflito.rows[0].id,
+        });
+      }
+    }
+
+    await pool.query(
+      `INSERT INTO agendamentos (
+         id,
+         barbearia_id,
+         servico_id,
+         servico_nome_snapshot,
+         servico_preco_snapshot,
+         cliente_id,
+         cliente_nome_externo,
+         cliente_telefone_externo,
+         barbeiro_id,
+         data,
+         hora,
+         status,
+         chatbot_session_id,
+         observacoes,
+         origem
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       ON DUPLICATE KEY UPDATE
+         barbearia_id = VALUES(barbearia_id),
+         servico_id = VALUES(servico_id),
+         servico_nome_snapshot = VALUES(servico_nome_snapshot),
+         servico_preco_snapshot = VALUES(servico_preco_snapshot),
+         cliente_id = VALUES(cliente_id),
+         cliente_nome_externo = VALUES(cliente_nome_externo),
+         cliente_telefone_externo = VALUES(cliente_telefone_externo),
+         barbeiro_id = VALUES(barbeiro_id),
+         data = VALUES(data),
+         hora = VALUES(hora),
+         status = VALUES(status),
+         chatbot_session_id = VALUES(chatbot_session_id),
+         observacoes = VALUES(observacoes),
+         origem = VALUES(origem),
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        appointment.id,
+        appointment.barbearia_id,
+        appointment.servico_id,
+        appointment.servico_nome_snapshot,
+        appointment.servico_preco_snapshot,
+        appointment.cliente_id,
+        appointment.cliente_nome_externo,
+        appointment.cliente_telefone_externo,
+        appointment.barbeiro_id,
+        appointment.data,
+        appointment.hora,
+        appointment.status,
+        appointment.chatbot_session_id,
+        appointment.observacoes,
+        appointment.origem,
+      ]
+    );
+
+    const result = await pool.query(
+      'SELECT * FROM agendamentos WHERE id = $1 LIMIT 1',
+      [appointment.id]
+    );
+
+    res.status(201).json({
+      ok: true,
+      agendamento: result.rows[0] || appointment,
+    });
+  } catch (error) {
+    console.error('[INTERNAL_BOT_SYNC.appointments] Falha ao sincronizar agendamento do bot', {
+      message: error?.message,
+      code: error?.code,
+    }, error);
+
+    res.status(500).json({
+      error: error?.message || 'Não foi possível sincronizar o agendamento do bot.',
+      code: 'APPOINTMENT_SYNC_FAILED',
+    });
   }
 });
 

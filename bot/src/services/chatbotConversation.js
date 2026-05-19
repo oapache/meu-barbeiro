@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const WhatsAppService = require('./whatsapp');
 const { ensureAgendamentoSchema } = require('./agendamentoSchema');
 const { registrarAvaliacaoAtendimento, normalizarAvaliacaoNota } = require('./barbeariaRatings');
+const { syncAppointmentToBackend } = require('./backendAppointments');
 const {
   ensureChatbotTrainingSchema,
   getChatbotOperationalSettings,
@@ -867,6 +868,7 @@ async function criarAgendamentoExterno({
   servico,
   dataISO,
   hora,
+  sessionId,
 }) {
   await ensureAgendamentoSchema();
 
@@ -900,11 +902,12 @@ async function criarAgendamentoExterno({
        data,
        hora,
        status,
+       chatbot_session_id,
        observacoes,
        origem
-     )
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, 'pendente', $9, 'whatsapp')
-     RETURNING *`,
+      )
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, 'pendente', $9, $10, 'whatsapp')
+      RETURNING *`,
     [
       barbeariaId,
       servico.id,
@@ -914,13 +917,57 @@ async function criarAgendamentoExterno({
       telefoneContato,
       dataISO,
       hora,
+      sessionId || null,
       'Agendado automaticamente pelo WhatsApp',
     ]
   );
 
+  const agendamento = result.rows[0];
+  try {
+    const backendSync = await syncAppointmentToBackend(agendamento);
+    if (backendSync?.agendamento) {
+      return {
+        created: true,
+        agendamento: backendSync.agendamento,
+      };
+    }
+  } catch (error) {
+    console.error('[CHATBOT_CONVERSATION] Falha ao sincronizar agendamento com a API principal', {
+      barbeariaId,
+      agendamentoId: agendamento?.id,
+      code: error?.code,
+      status: error?.status,
+      message: error?.message,
+    }, error);
+
+    await pool.query(
+      `UPDATE agendamentos
+       SET status = 'cancelado',
+           observacoes = CONCAT(
+             COALESCE(observacoes, ''),
+             CASE WHEN observacoes IS NULL OR observacoes = '' THEN '' ELSE '\n' END,
+             $2
+           ),
+           updated_at = NOW()
+       WHERE id = $1`,
+      [
+        agendamento?.id,
+        error?.code === 'TIME_CONFLICT'
+          ? 'Cancelado automaticamente: conflito na agenda principal.'
+          : 'Cancelado automaticamente: falha ao sincronizar com a agenda principal.',
+      ]
+    ).catch(() => undefined);
+
+    return {
+      created: false,
+      reason: error?.code === 'TIME_CONFLICT' ? 'TIME_CONFLICT' : 'SYNC_FAILED',
+      error: error?.message || 'Falha ao sincronizar com a agenda principal.',
+    };
+  }
+
   return {
     created: true,
-    agendamento: result.rows[0],
+    agendamento,
   };
 }
 
@@ -1597,6 +1644,8 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
       const servico = {
         id: String(conversa.payload?.servicoId || ''),
         nome: String(conversa.payload?.servicoNome || 'Serviço'),
+        preco: Number(conversa.payload?.servicoPreco || 0),
+        duracao: Number(conversa.payload?.servicoDuracao || 30),
       };
       const dataISO = String(conversa.payload?.selectedDate || '');
       const hora = String(conversa.payload?.selectedTime || '');
@@ -1609,9 +1658,24 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
         servico,
         dataISO,
         hora,
+        sessionId: session?.id,
       });
 
       if (!criacao.created) {
+        if (criacao.reason === 'SYNC_FAILED') {
+          const mensagem = `Não consegui finalizar o agendamento na agenda principal da *${barbearia.nome}* agora.\n\nPor segurança, nenhum horário foi confirmado. Tente novamente em alguns instantes ou fale com a equipe da barbearia.`;
+
+          await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+            stage: 'awaiting_confirmation',
+            ...patch,
+          }), {
+            stageBefore: 'awaiting_confirmation',
+            stageAfter: 'awaiting_confirmation',
+            resultCode: 'BOOKING_SYNC_FAILED',
+          });
+          return;
+        }
+
         const horariosAtualizados = await listarHorariosDisponiveis(barbearia, { ...servico, duracao: Number(conversa.payload?.servicoDuracao || 30) }, dataISO);
         const mensagem = horariosAtualizados.length > 0
           ? `Esse horário acabou de ficar indisponível enquanto eu finalizava a confirmação.\n\n${montarMensagemHorarios(dataISO, horariosAtualizados)}`
