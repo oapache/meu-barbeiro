@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS agendamentos (
   data DATE NOT NULL,
   hora TIME NOT NULL,
   status VARCHAR(20) DEFAULT 'pendente', -- 'pendente', 'confirmado', 'cancelado', 'concluido'
+  protocolo_atendimento VARCHAR(20) UNIQUE,
   observacoes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -72,4 +73,5 @@ CREATE INDEX IF NOT EXISTS idx_barbearias_usuario ON barbearias(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_servicos_barbearia ON servicos(barbearia_id);
 CREATE INDEX IF NOT EXISTS idx_agendamentos_barbearia ON agendamentos(barbearia_id);
 CREATE INDEX IF NOT EXISTS idx_agendamentos_data ON agendamentos(data);
+CREATE INDEX IF NOT EXISTS idx_agendamentos_protocolo_atendimento ON agendamentos(protocolo_atendimento);
 CREATE INDEX IF NOT EXISTS idx_fidelidade_cliente ON fidelidade(cliente_id);

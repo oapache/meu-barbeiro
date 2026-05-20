@@ -5,7 +5,13 @@ const { registrarAvaliacaoAtendimento, normalizarAvaliacaoNota } = require('./ba
 const {
   markAppointmentBackendSyncStatus,
   syncAppointmentToBackend,
+  fetchAppointmentByProtocol,
+  rescheduleAppointmentInBackend,
 } = require('./backendAppointments');
+const {
+  gerarProtocoloAtendimento,
+  normalizarProtocoloAtendimento,
+} = require('./appointmentProtocol');
 const {
   ensureChatbotTrainingSchema,
   getChatbotOperationalSettings,
@@ -110,6 +116,39 @@ function minutosParaHora(totalMinutos) {
 function normalizarHora(valor, fallback = '') {
   const texto = String(valor || '').trim().slice(0, 5);
   return /^\d{2}:\d{2}$/.test(texto) ? texto : fallback;
+}
+
+function normalizarDataISOValor(valor = '') {
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+    const ano = valor.getUTCFullYear();
+    const mes = String(valor.getUTCMonth() + 1).padStart(2, '0');
+    const dia = String(valor.getUTCDate()).padStart(2, '0');
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  const match = String(valor || '').match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : String(valor || '').trim();
+}
+
+function extrairProtocoloMensagem(texto = '') {
+  const protocolo = normalizarProtocoloAtendimento(texto);
+  return protocolo.length === 6 ? protocolo : '';
+}
+
+async function gerarProtocoloLocalUnico() {
+  for (let tentativa = 0; tentativa < 20; tentativa += 1) {
+    const protocolo = gerarProtocoloAtendimento();
+    const existente = await pool.query(
+      'SELECT id FROM agendamentos WHERE protocolo_atendimento = $1 LIMIT 1',
+      [protocolo]
+    );
+
+    if (existente.rows.length === 0) {
+      return protocolo;
+    }
+  }
+
+  throw new Error('Não foi possível gerar um protocolo de atendimento único.');
 }
 
 function gerarHorariosIntervalo(inicio, fim, intervaloMinutos = 30) {
@@ -788,7 +827,7 @@ function montarMensagemConfirmacao({ nomeContato, nomeServico, dataISO, hora, du
   return `Só confirmando os detalhes do seu agendamento:\n\n*Nome:* ${nomeContato}\n*Serviço:* ${nomeServico}${duracao}${preco}\n*Data:* ${formatarDataCurtaBR(dataISO)}\n*Hora:* ${hora}${endereco}\n\nSe estiver tudo certo, responda *1* para confirmar.\nSe quiser escolher outro horário, responda *2*.`;
 }
 
-async function listarHorariosDisponiveis(barbearia, servico, dataISO) {
+async function listarHorariosDisponiveis(barbearia, servico, dataISO, options = {}) {
   const aberturaPadrao = normalizarHora(barbearia?.horario_abertura, '09:00');
   const fechamentoPadrao = normalizarHora(barbearia?.horario_fechamento, '18:00');
   const horariosSemana = Array.isArray(barbearia?.horarios_semana) ? barbearia.horarios_semana : [];
@@ -802,15 +841,20 @@ async function listarHorariosDisponiveis(barbearia, servico, dataISO) {
   const duracaoServico = Number(servico?.duracao || 30);
   const fechamentoMin = horaParaMinutos(faixa.fechamento);
 
-  const agendamentosResult = await pool.query(
-    `SELECT a.hora, COALESCE(s.duracao_minutos, 30) AS duracao_minutos
+  const params = [barbearia.id, dataISO];
+  let query = `SELECT a.hora, COALESCE(s.duracao_minutos, 30) AS duracao_minutos
      FROM agendamentos a
      LEFT JOIN servicos s ON s.id = a.servico_id
      WHERE a.barbearia_id = $1
        AND a.data = $2
-       AND a.status NOT IN ('cancelado', 'faltou')`,
-    [barbearia.id, dataISO]
-  );
+       AND a.status NOT IN ('cancelado', 'faltou')`;
+
+  if (options.ignoreAppointmentId) {
+    params.push(String(options.ignoreAppointmentId));
+    query += ` AND a.id <> $${params.length}`;
+  }
+
+  const agendamentosResult = await pool.query(query, params);
 
   const ocupados = agendamentosResult.rows
     .map((item) => {
@@ -905,12 +949,13 @@ async function criarAgendamentoExterno({
        data,
        hora,
        status,
+       protocolo_atendimento,
        chatbot_session_id,
        observacoes,
        origem,
        backend_sync_status
       )
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, 'pendente', $9, $10, 'whatsapp', 'pending')
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, 'pendente', $9, $10, $11, 'whatsapp', 'pending')
       RETURNING *`,
     [
       barbeariaId,
@@ -921,6 +966,7 @@ async function criarAgendamentoExterno({
       telefoneContato,
       dataISO,
       hora,
+      await gerarProtocoloLocalUnico(),
       sessionId || null,
       'Agendado automaticamente pelo WhatsApp',
     ]
@@ -982,6 +1028,185 @@ async function criarAgendamentoExterno({
     created: true,
     agendamento,
   };
+}
+
+function montarServicoAgendamento(agendamento = {}) {
+  return {
+    id: String(agendamento.servico_id || agendamento.servicoId || ''),
+    nome: String(agendamento.servico_nome || agendamento.servico_nome_snapshot || 'Serviço'),
+    preco: Number(agendamento.servico_preco || agendamento.servico_preco_snapshot || 0),
+    duracao: Number(agendamento.servico_duracao || agendamento.duracao_minutos || 30),
+  };
+}
+
+function montarMensagemAgendamentoDoProtocolo(agendamento = {}) {
+  const protocolo = agendamento.protocolo_atendimento || agendamento.protocoloAtendimento || '';
+  const servico = montarServicoAgendamento(agendamento);
+
+  return `Encontrei seu agendamento pelo protocolo *${protocolo}*.
+
+*Cliente:* ${agendamento.cliente_nome || 'Cliente'}
+*Serviço:* ${servico.nome}
+*Data atual:* ${formatarDataCurtaBR(agendamento.data)}
+*Hora atual:* ${normalizarHora(agendamento.hora, String(agendamento.hora || '').slice(0, 5))}
+
+Para remarcar, me envie a nova data no formato *DD/MM*.
+Exemplo: *25/05*.
+
+Se preferir atendimento manual, responda *atendente*.`;
+}
+
+function montarMensagemConfirmacaoRemarcacao({ agendamento, dataISO, hora, barbearia }) {
+  const servico = montarServicoAgendamento(agendamento);
+
+  return `Só confirmando a remarcação do protocolo *${agendamento.protocolo_atendimento || ''}*:
+
+*Serviço:* ${servico.nome}
+*De:* ${formatarDataCurtaBR(agendamento.data)} às ${normalizarHora(agendamento.hora, String(agendamento.hora || '').slice(0, 5))}
+*Para:* ${formatarDataCurtaBR(dataISO)} às ${hora}
+${barbearia?.endereco ? `*Local:* ${barbearia.endereco}\n` : ''}
+Se estiver tudo certo, responda *1* para confirmar.
+Se quiser escolher outro horário, responda *2*.`.replace(/\n{3,}/g, '\n\n');
+}
+
+async function upsertAgendamentoLocalFromBackend(agendamento = {}, sessionId = null) {
+  if (!agendamento?.id || !agendamento?.barbearia_id || !agendamento?.data || !agendamento?.hora) {
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO agendamentos (
+       id,
+       barbearia_id,
+       servico_id,
+       servico_nome_snapshot,
+       servico_preco_snapshot,
+       cliente_id,
+       cliente_nome_externo,
+       cliente_telefone_externo,
+       barbeiro_id,
+       data,
+       hora,
+       status,
+       protocolo_atendimento,
+       chatbot_session_id,
+       observacoes,
+       origem,
+       backend_sync_status,
+       backend_synced_at
+     )
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'whatsapp','synced',CURRENT_TIMESTAMP)
+     ON DUPLICATE KEY UPDATE
+       barbearia_id = VALUES(barbearia_id),
+       servico_id = VALUES(servico_id),
+       servico_nome_snapshot = VALUES(servico_nome_snapshot),
+       servico_preco_snapshot = VALUES(servico_preco_snapshot),
+       cliente_id = VALUES(cliente_id),
+       cliente_nome_externo = VALUES(cliente_nome_externo),
+       cliente_telefone_externo = VALUES(cliente_telefone_externo),
+       barbeiro_id = VALUES(barbeiro_id),
+       data = VALUES(data),
+       hora = VALUES(hora),
+       status = VALUES(status),
+       protocolo_atendimento = COALESCE(VALUES(protocolo_atendimento), protocolo_atendimento),
+       chatbot_session_id = COALESCE(VALUES(chatbot_session_id), chatbot_session_id),
+       observacoes = VALUES(observacoes),
+       backend_sync_status = 'synced',
+       backend_sync_error = NULL,
+       backend_synced_at = CURRENT_TIMESTAMP,
+       updated_at = CURRENT_TIMESTAMP`,
+    [
+      agendamento.id,
+      agendamento.barbearia_id,
+      agendamento.servico_id || null,
+      agendamento.servico_nome || agendamento.servico_nome_snapshot || null,
+      Number(agendamento.servico_preco || agendamento.servico_preco_snapshot || 0),
+      agendamento.cliente_id || null,
+      agendamento.cliente_nome || agendamento.cliente_nome_externo || null,
+      agendamento.cliente_telefone || agendamento.cliente_telefone_externo || null,
+      agendamento.barbeiro_id || null,
+      normalizarDataISOValor(agendamento.data),
+      normalizarHora(agendamento.hora, String(agendamento.hora || '').slice(0, 5)),
+      agendamento.status || 'pendente',
+      agendamento.protocolo_atendimento || null,
+      sessionId || agendamento.chatbot_session_id || null,
+      agendamento.observacoes || 'Sincronizado da agenda principal pelo protocolo de atendimento.',
+    ]
+  );
+}
+
+async function iniciarRemarcacaoPorProtocolo({
+  protocolo,
+  barbearia,
+  telefone,
+  pushName,
+  sessionId,
+  sendReply,
+  salvarEstado,
+}) {
+  try {
+    const response = await fetchAppointmentByProtocol({
+      protocolo,
+      barbeariaId: barbearia.id,
+      phoneNumber: telefone,
+    });
+
+    const agendamento = response?.agendamento;
+    if (!agendamento) {
+      throw new Error('Agendamento não encontrado para este protocolo.');
+    }
+
+    await upsertAgendamentoLocalFromBackend(agendamento, sessionId).catch(() => undefined);
+
+    const mensagem = montarMensagemAgendamentoDoProtocolo(agendamento);
+    await responder(sendReply, mensagem, (patch) => salvarEstado({
+      contactName: agendamento.cliente_nome || capitalizarNome(pushName || '') || 'Cliente',
+      stage: 'awaiting_reschedule_date',
+      replacePayload: true,
+      payload: {
+        rescheduleAppointment: {
+          id: agendamento.id,
+          protocoloAtendimento: agendamento.protocolo_atendimento || protocolo,
+          clienteNome: agendamento.cliente_nome || '',
+          clienteTelefone: agendamento.cliente_telefone || telefone,
+          servicoId: agendamento.servico_id || '',
+          servicoNome: agendamento.servico_nome || agendamento.servico_nome_snapshot || 'Serviço',
+          servicoPreco: Number(agendamento.servico_preco || agendamento.servico_preco_snapshot || 0),
+          servicoDuracao: Number(agendamento.servico_duracao || agendamento.duracao_minutos || 30),
+          dataAtual: normalizarDataISOValor(agendamento.data),
+          horaAtual: normalizarHora(agendamento.hora, String(agendamento.hora || '').slice(0, 5)),
+        },
+      },
+      ...patch,
+    }), {
+      stageBefore: 'idle',
+      stageAfter: 'awaiting_reschedule_date',
+      detectedIntent: 'reschedule_by_protocol',
+      resultCode: 'RESCHEDULE_PROTOCOL_FOUND',
+      slots: { protocoloAtendimento: protocolo },
+    });
+
+    return true;
+  } catch (error) {
+    const mensagem = error?.code === 'APPOINTMENT_NOT_RESCHEDULABLE'
+      ? `Encontrei o protocolo *${protocolo}*, mas esse agendamento não está disponível para remarcação automática.\n\nFale com a equipe da *${barbearia.nome}* para ajustar esse horário.`
+      : `Não encontrei nenhum agendamento ativo para o protocolo *${protocolo}* neste WhatsApp.\n\nConfira o número e envie novamente, ou responda *agendar* para começar um novo agendamento.`;
+
+    await responder(sendReply, mensagem, (patch) => salvarEstado({
+      stage: 'completed',
+      replacePayload: true,
+      payload: {},
+      ...patch,
+    }), {
+      stageBefore: 'idle',
+      stageAfter: 'completed',
+      detectedIntent: 'reschedule_by_protocol',
+      resultCode: error?.code || 'RESCHEDULE_PROTOCOL_NOT_FOUND',
+      slots: { protocoloAtendimento: protocolo },
+    });
+
+    return true;
+  }
 }
 
 async function responder(sendReply, message, saveState, replyMeta = {}) {
@@ -1274,6 +1499,7 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
       HUMAN_HANDOFF: 'HUMAN_HANDOFF',
       CANCEL_FLOW: 'CANCEL_FLOW',
       BOOKED: 'BOOKED',
+      RESCHEDULED: 'RESCHEDULED',
       REVIEW_CAPTURED: 'REVIEW_CAPTURED',
     };
 
@@ -1286,12 +1512,31 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
     }).catch(() => undefined);
   });
 
+  const salvarEstado = (patch = {}) => saveConversation(barbearia.id, telefone, {
+    ...patch,
+    lastInboundMessage: texto,
+  });
+
   if (conversa?.stage === 'human_handoff' && !RESET_KEYWORDS.includes(textoNormalizado)) {
     await updateChatbotSessionState({
       sessionId: session?.id,
       currentStage: 'human_handoff',
       status: 'human_handoff',
     }).catch(() => undefined);
+    return;
+  }
+
+  const protocoloDigitado = extrairProtocoloMensagem(texto);
+  if (protocoloDigitado && !RESET_KEYWORDS.includes(textoNormalizado)) {
+    await iniciarRemarcacaoPorProtocolo({
+      protocolo: protocoloDigitado,
+      barbearia,
+      telefone,
+      pushName,
+      sessionId: session?.id,
+      sendReply: sendReplyWithTelemetry,
+      salvarEstado,
+    });
     return;
   }
 
@@ -1361,11 +1606,6 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
     return;
   }
 
-  const salvarEstado = (patch = {}) => saveConversation(barbearia.id, telefone, {
-    ...patch,
-    lastInboundMessage: texto,
-  });
-
   if (conversa?.payload) {
     const servicoEncontrado = servicosAnalise.length > 0
       ? (analysis?.slots?.desiredServiceId
@@ -1392,6 +1632,249 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
   }
 
   switch (conversa.stage) {
+    case 'awaiting_reschedule_date': {
+      const agendamento = conversa.payload?.rescheduleAppointment;
+      if (!agendamento?.id) {
+        await iniciarFluxo({
+          barbearia,
+          phoneNumber: telefone,
+          pushName,
+          sendReply: sendReplyWithTelemetry,
+          sessionId: session?.id,
+          detectedIntent: analysis.globalIntent,
+        });
+        return;
+      }
+
+      const dataISO = parseDateInput(texto);
+      if (!dataISO) {
+        const mensagem = `Não entendi a nova data.\n\nEnvie no formato *DD/MM*.\nExemplo: *25/05*.`;
+        await responder(sendReplyWithTelemetry, mensagem, salvarEstado, {
+          stageBefore: 'awaiting_reschedule_date',
+          stageAfter: 'awaiting_reschedule_date',
+          resultCode: 'RESCHEDULE_DATE_INVALID',
+        });
+        return;
+      }
+
+      const servico = {
+        id: String(agendamento.servicoId || ''),
+        nome: String(agendamento.servicoNome || 'Serviço'),
+        duracao: Number(agendamento.servicoDuracao || 30),
+      };
+      const horarios = await listarHorariosDisponiveis(barbearia, servico, dataISO, {
+        ignoreAppointmentId: agendamento.id,
+      });
+
+      if (horarios.length === 0) {
+        const sugestoes = await sugerirProximasDatasDisponiveis(barbearia, servico, dataISO, 3);
+        const listaSugestoes = sugestoes
+          .map((item) => `- ${formatarDataCurtaBR(item.dataISO)}${item.horarios?.[0] ? ` a partir de ${item.horarios[0]}` : ''}`)
+          .join('\n');
+        const mensagem = sugestoes.length > 0
+          ? `Não encontrei horários livres para remarcar em *${formatarDataCurtaBR(dataISO)}*.\n\nPróximas opções:\n${listaSugestoes}\n\nMe envie outra data no formato *DD/MM*.`
+          : `Não encontrei horários livres para remarcar nessa data.\n\nMe envie outra data no formato *DD/MM*.`;
+
+        await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+          payload: {
+            ...conversa.payload,
+            rescheduleAvailableSlots: [],
+          },
+          ...patch,
+        }), {
+          stageBefore: 'awaiting_reschedule_date',
+          stageAfter: 'awaiting_reschedule_date',
+          resultCode: 'RESCHEDULE_DATE_NO_SLOTS',
+        });
+        return;
+      }
+
+      const mensagem = montarMensagemHorarios(dataISO, horarios);
+      await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+        stage: 'awaiting_reschedule_time',
+        payload: {
+          ...conversa.payload,
+          rescheduleSelectedDate: dataISO,
+          rescheduleAvailableSlots: horarios,
+        },
+        ...patch,
+      }), {
+        stageBefore: 'awaiting_reschedule_date',
+        stageAfter: 'awaiting_reschedule_time',
+        resultCode: 'RESCHEDULE_DATE_SELECTED',
+      });
+      return;
+    }
+
+    case 'awaiting_reschedule_time': {
+      const agendamento = conversa.payload?.rescheduleAppointment;
+      const availableSlots = Array.isArray(conversa.payload?.rescheduleAvailableSlots)
+        ? conversa.payload.rescheduleAvailableSlots.map((horaItem) => ({ hora: horaItem, label: horaItem }))
+        : [];
+      const selecionado = parseOptionSelection(texto, availableSlots);
+
+      if (!agendamento?.id || !selecionado) {
+        const mensagem = `Não consegui identificar o horário desejado.\n\n${montarMensagemHorarios(conversa.payload?.rescheduleSelectedDate, availableSlots.map((item) => item.hora))}`;
+        await responder(sendReplyWithTelemetry, mensagem, salvarEstado, {
+          stageBefore: 'awaiting_reschedule_time',
+          stageAfter: 'awaiting_reschedule_time',
+          resultCode: 'RESCHEDULE_TIME_INVALID',
+        });
+        return;
+      }
+
+      const horaEscolhida = selecionado.hora;
+      const mensagem = montarMensagemConfirmacaoRemarcacao({
+        agendamento: {
+          ...agendamento,
+          data: agendamento.dataAtual,
+          hora: agendamento.horaAtual,
+          protocolo_atendimento: agendamento.protocoloAtendimento,
+          servico_nome: agendamento.servicoNome,
+          servico_preco: agendamento.servicoPreco,
+          servico_duracao: agendamento.servicoDuracao,
+        },
+        dataISO: conversa.payload?.rescheduleSelectedDate || '',
+        hora: horaEscolhida,
+        barbearia,
+      });
+
+      await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+        stage: 'awaiting_reschedule_confirmation',
+        payload: {
+          ...conversa.payload,
+          rescheduleSelectedTime: horaEscolhida,
+        },
+        ...patch,
+      }), {
+        stageBefore: 'awaiting_reschedule_time',
+        stageAfter: 'awaiting_reschedule_confirmation',
+        resultCode: 'RESCHEDULE_TIME_SELECTED',
+      });
+      return;
+    }
+
+    case 'awaiting_reschedule_confirmation': {
+      const agendamento = conversa.payload?.rescheduleAppointment;
+      const dataISO = String(conversa.payload?.rescheduleSelectedDate || '');
+      const hora = String(conversa.payload?.rescheduleSelectedTime || '');
+
+      if (CHANGE_KEYWORDS.includes(textoNormalizado)) {
+        const horarios = Array.isArray(conversa.payload?.rescheduleAvailableSlots)
+          ? conversa.payload.rescheduleAvailableSlots
+          : [];
+        const mensagem = montarMensagemHorarios(dataISO, horarios);
+
+        await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+          stage: 'awaiting_reschedule_time',
+          ...patch,
+        }), {
+          stageBefore: 'awaiting_reschedule_confirmation',
+          stageAfter: 'awaiting_reschedule_time',
+          resultCode: 'RESCHEDULE_CHANGE_TIME',
+        });
+        return;
+      }
+
+      if (!agendamento?.id || !CONFIRM_KEYWORDS.includes(textoNormalizado)) {
+        const mensagem = `Para remarcar, responda com *1* para confirmar ou *2* para escolher outro horário.`;
+        await responder(sendReplyWithTelemetry, mensagem, salvarEstado, {
+          stageBefore: 'awaiting_reschedule_confirmation',
+          stageAfter: 'awaiting_reschedule_confirmation',
+          resultCode: 'RESCHEDULE_CONFIRMATION_INVALID',
+        });
+        return;
+      }
+
+      try {
+        const remarcacao = await rescheduleAppointmentInBackend({
+          appointmentId: agendamento.id,
+          barbeariaId: barbearia.id,
+          phoneNumber: telefone,
+          data: dataISO,
+          hora,
+        });
+
+        const agendamentoAtualizado = remarcacao?.agendamento || {
+          ...agendamento,
+          barbearia_id: barbearia.id,
+          data: dataISO,
+          hora,
+          protocolo_atendimento: agendamento.protocoloAtendimento,
+        };
+
+        await upsertAgendamentoLocalFromBackend(agendamentoAtualizado, session?.id).catch(() => undefined);
+
+        const mensagem = WhatsAppService.templateAgendamentoRemarcadoCliente({
+          nomeCliente: agendamento.clienteNome || conversa.contact_name || pushName || 'cliente',
+          nomeBarbearia: barbearia.nome,
+          servico: agendamento.servicoNome || 'Serviço',
+          dataAnterior: remarcacao?.previous?.data || agendamento.dataAtual,
+          horaAnterior: remarcacao?.previous?.hora || agendamento.horaAtual,
+          data: dataISO,
+          hora,
+          enderecoBarbearia: barbearia.endereco,
+          protocoloAtendimento: agendamento.protocoloAtendimento,
+        });
+
+        await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+          stage: 'completed',
+          replacePayload: true,
+          payload: {
+            ultimoAgendamentoId: agendamento.id,
+            ultimoProtocoloAtendimento: agendamento.protocoloAtendimento,
+          },
+          ...patch,
+        }), {
+          stageBefore: 'awaiting_reschedule_confirmation',
+          stageAfter: 'completed',
+          resultCode: 'RESCHEDULED',
+          slots: {
+            protocoloAtendimento: agendamento.protocoloAtendimento,
+            desiredDate: dataISO,
+            desiredTime: hora,
+          },
+        });
+        return;
+      } catch (error) {
+        if (error?.code === 'TIME_CONFLICT') {
+          const servico = {
+            id: String(agendamento.servicoId || ''),
+            nome: String(agendamento.servicoNome || 'Serviço'),
+            duracao: Number(agendamento.servicoDuracao || 30),
+          };
+          const horariosAtualizados = await listarHorariosDisponiveis(barbearia, servico, dataISO, {
+            ignoreAppointmentId: agendamento.id,
+          });
+          const mensagem = horariosAtualizados.length > 0
+            ? `Esse horário acabou de ficar indisponível na agenda principal.\n\n${montarMensagemHorarios(dataISO, horariosAtualizados)}`
+            : `Esse horário acabou de ficar indisponível na agenda principal.\n\nMe envie outra data no formato *DD/MM* para eu buscar novas opções.`;
+
+          await responder(sendReplyWithTelemetry, mensagem, (patch) => salvarEstado({
+            stage: horariosAtualizados.length > 0 ? 'awaiting_reschedule_time' : 'awaiting_reschedule_date',
+            payload: {
+              ...conversa.payload,
+              rescheduleAvailableSlots: horariosAtualizados,
+            },
+            ...patch,
+          }), {
+            stageBefore: 'awaiting_reschedule_confirmation',
+            stageAfter: horariosAtualizados.length > 0 ? 'awaiting_reschedule_time' : 'awaiting_reschedule_date',
+            resultCode: 'RESCHEDULE_TIME_CONFLICT',
+          });
+          return;
+        }
+
+        const mensagem = `Não consegui remarcar esse agendamento na agenda principal agora.\n\nPor segurança, mantive o horário anterior. Tente novamente em instantes ou fale com a equipe da *${barbearia.nome}*.`;
+        await responder(sendReplyWithTelemetry, mensagem, salvarEstado, {
+          stageBefore: 'awaiting_reschedule_confirmation',
+          stageAfter: 'awaiting_reschedule_confirmation',
+          resultCode: error?.code || 'RESCHEDULE_FAILED',
+        });
+        return;
+      }
+    }
+
     case 'awaiting_review': {
       const nota = parseReviewScore(texto);
 
@@ -1721,6 +2204,7 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
         hora,
         nomeBarbearia: barbearia.nome,
         enderecoBarbearia: barbearia.endereco,
+        protocoloAtendimento: criacao.agendamento?.protocolo_atendimento,
       })}\n\nSe preferir acompanhar sua reserva ou solicitar remarcação online, acesse ${CHATBOT_SITE_URL}.`;
 
       await responder(sendReplyWithTelemetry, mensagemConfirmacao, (patch) => salvarEstado({
@@ -1728,6 +2212,7 @@ async function handleIncomingMessage({ barbeariaId, phoneNumber, message, pushNa
         replacePayload: true,
         payload: {
           ultimoAgendamentoId: criacao.agendamento?.id || null,
+          ultimoProtocoloAtendimento: criacao.agendamento?.protocolo_atendimento || null,
         },
         ...patch,
       }), {

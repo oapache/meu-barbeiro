@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const WhatsAppService = require('../services/whatsapp');
 const { ensureAgendamentoSchema } = require('../services/agendamentoSchema');
+const { gerarProtocoloAtendimentoUnico } = require('../services/appointmentProtocol');
 const {
   sendTextMessage,
   registrarSolicitacaoAvaliacaoPendente,
@@ -41,6 +42,24 @@ function normalizarServicoPreco(value) {
   const preco = Number(value);
   if (!Number.isFinite(preco) || preco < 0) return null;
   return Number(preco.toFixed(2));
+}
+
+function normalizarDataAgendamento(value = '') {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const ano = value.getUTCFullYear();
+    const mes = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const dia = String(value.getUTCDate()).padStart(2, '0');
+    return `${ano}-${mes}-${dia}`;
+  }
+
+  const match = String(value || '').match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : String(value || '').trim();
+}
+
+function normalizarHoraAgendamento(value = '') {
+  const match = String(value || '').match(/(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return String(value || '').trim();
+  return `${match[1]}:${match[2]}:${match[3] || '00'}`;
 }
 
 async function obterSnapshotServico({
@@ -101,6 +120,7 @@ async function montarPayloadWhatsAppAgendamento({
   barbeiro_id,
   data,
   hora,
+  protocoloAtendimento,
 }) {
   const resultadoVazio = { cliente: null, barbearia: null };
 
@@ -139,6 +159,7 @@ async function montarPayloadWhatsAppAgendamento({
     enderecoBarbearia: barbearia.endereco,
     telefoneBarbearia: barbearia.whatsapp_link || barbearia.telefone,
     barbeiroNome: barbeiro?.nome || '',
+    protocoloAtendimento,
   });
 }
 
@@ -172,6 +193,62 @@ async function enviarConfirmacaoAutomaticaAgendamentoSeguro(barbeariaId, whatsap
       sent: false,
       reason: 'BOT_CONFIRMATION_FAILED',
       error: error?.message || 'Nao foi possivel enviar a confirmacao automatica pelo WhatsApp.',
+    };
+  }
+}
+
+async function enviarRemarcacaoAutomaticaAgendamentoSeguro({
+  barbeariaId,
+  phoneNumber,
+  nomeCliente,
+  nomeBarbearia,
+  enderecoBarbearia,
+  servicoNome,
+  dataAnterior,
+  horaAnterior,
+  data,
+  hora,
+  protocoloAtendimento,
+}) {
+  const telefone = String(phoneNumber || '').trim();
+
+  if (!telefone || !WhatsAppService.validarTelefone(telefone)) {
+    return {
+      sent: false,
+      reason: 'NO_CLIENT_WHATSAPP',
+      error: 'Cliente sem telefone valido para automacao do WhatsApp.',
+    };
+  }
+
+  const mensagem = WhatsAppService.templateAgendamentoRemarcadoCliente({
+    nomeCliente,
+    nomeBarbearia,
+    enderecoBarbearia,
+    servico: servicoNome,
+    dataAnterior,
+    horaAnterior,
+    data,
+    hora,
+    protocoloAtendimento,
+  });
+
+  try {
+    return await sendTextMessage({
+      barbeariaId,
+      phoneNumber: telefone,
+      message: mensagem,
+    });
+  } catch (error) {
+    console.warn('[AGENDAMENTO.whatsapp] Falha ao avisar remarcacao automaticamente', {
+      barbeariaId,
+      message: error?.message,
+      status: error?.status,
+    });
+
+    return {
+      sent: false,
+      reason: 'BOT_RESCHEDULE_NOTIFICATION_FAILED',
+      error: error?.message || 'Nao foi possivel avisar a remarcacao pelo WhatsApp.',
     };
   }
 }
@@ -400,6 +477,7 @@ async function createAgendamento(req, res) {
     }
 
     const barbeiroUsuarioId = await normalizarBarbeiroUsuarioId(barbeiro_id);
+    const protocoloAtendimento = await gerarProtocoloAtendimentoUnico(pool);
     
     const result = await pool.query(
       `INSERT INTO agendamentos (
@@ -411,10 +489,11 @@ async function createAgendamento(req, res) {
          barbeiro_id,
          data,
          hora,
+         protocolo_atendimento,
          observacoes,
          origem
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         barbearia_id,
@@ -425,6 +504,7 @@ async function createAgendamento(req, res) {
         barbeiroUsuarioId,
         data,
         hora,
+        protocoloAtendimento,
         observacoes || null,
         origem || 'app',
       ]
@@ -438,6 +518,7 @@ async function createAgendamento(req, res) {
       barbeiro_id: barbeiroUsuarioId,
       data,
       hora,
+      protocoloAtendimento,
     });
     const whatsappAutomation = await enviarConfirmacaoAutomaticaAgendamentoSeguro(barbearia_id, whatsapp);
 
@@ -517,6 +598,7 @@ async function createAgendamentoByEmail(req, res) {
     }
 
     const barbeiroUsuarioId = await normalizarBarbeiroUsuarioId(barbeiro_id);
+    const protocoloAtendimento = await gerarProtocoloAtendimentoUnico(pool);
 
     const result = await pool.query(
       `INSERT INTO agendamentos (
@@ -528,10 +610,11 @@ async function createAgendamentoByEmail(req, res) {
          barbeiro_id,
          data,
          hora,
+         protocolo_atendimento,
          observacoes,
          origem
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         barbearia_id,
@@ -542,6 +625,7 @@ async function createAgendamentoByEmail(req, res) {
         barbeiroUsuarioId,
         data,
         hora,
+        protocoloAtendimento,
         observacoes || null,
         origem || 'painel',
       ]
@@ -555,6 +639,7 @@ async function createAgendamentoByEmail(req, res) {
       barbeiro_id: barbeiroUsuarioId,
       data,
       hora,
+      protocoloAtendimento,
     });
     const whatsappAutomation = await enviarConfirmacaoAutomaticaAgendamentoSeguro(barbearia_id, whatsapp);
 
@@ -597,13 +682,15 @@ async function updateAgendamento(req, res) {
          a.data,
          a.hora,
          a.barbearia_id,
+         a.protocolo_atendimento,
          a.avaliacao_nota,
          a.avaliacao_comentario,
          a.avaliacao_registrada_em,
          COALESCE(c.nome, a.cliente_nome_externo, 'Cliente') AS cliente_nome,
          COALESCE(c.telefone, a.cliente_telefone_externo, '') AS cliente_telefone,
          COALESCE(a.servico_nome_snapshot, s.nome, NULLIF(a.observacoes, '')) AS servico_nome,
-         COALESCE(b.nome, '') AS barbearia_nome
+         COALESCE(b.nome, '') AS barbearia_nome,
+         COALESCE(b.endereco, '') AS barbearia_endereco
        FROM agendamentos a
        LEFT JOIN usuarios c ON c.id = a.cliente_id
        LEFT JOIN servicos s ON s.id = a.servico_id
@@ -621,6 +708,8 @@ async function updateAgendamento(req, res) {
     }
 
     const atual = atualResult.rows[0];
+    const dataAtual = normalizarDataAgendamento(atual.data);
+    const horaAtual = normalizarHoraAgendamento(atual.hora);
     const validacaoGestao = await validarGestaoAgenda(atual.barbearia_id);
     if (!validacaoGestao.ok) {
       await client.query('ROLLBACK');
@@ -633,11 +722,11 @@ async function updateAgendamento(req, res) {
       ? atual.status
       : String(status).trim().toLowerCase();
     const dataFinal = data === undefined || data === null || data === ''
-      ? atual.data
-      : String(data).trim();
+      ? dataAtual
+      : normalizarDataAgendamento(data);
     const horaFinal = hora === undefined || hora === null || hora === ''
-      ? atual.hora
-      : String(hora).trim();
+      ? horaAtual
+      : normalizarHoraAgendamento(hora);
 
     const statusValido = ['pendente', 'confirmado', 'cancelado', 'em_atendimento', 'concluido', 'faltou'].includes(statusFinal);
     if (!statusValido) {
@@ -681,7 +770,7 @@ async function updateAgendamento(req, res) {
       ? (atual.avaliacao_registrada_em || new Date().toISOString())
       : null;
 
-    const alterouHorario = dataFinal !== atual.data || horaFinal !== atual.hora;
+    const alterouHorario = dataFinal !== dataAtual || horaFinal !== horaAtual;
     if (alterouHorario) {
       const conflito = await client.query(
         `SELECT id
@@ -703,6 +792,8 @@ async function updateAgendamento(req, res) {
       }
     }
 
+    const protocoloAtendimento = atual.protocolo_atendimento || await gerarProtocoloAtendimentoUnico(client);
+
     const result = await client.query(
       `UPDATE agendamentos
        SET status = $1,
@@ -711,8 +802,9 @@ async function updateAgendamento(req, res) {
            avaliacao_nota = $4,
            avaliacao_comentario = $5,
            avaliacao_registrada_em = $6,
+           protocolo_atendimento = COALESCE(protocolo_atendimento, $7),
            updated_at = NOW()
-       WHERE id = $7
+       WHERE id = $8
        RETURNING *`,
       [
         statusFinal,
@@ -721,6 +813,7 @@ async function updateAgendamento(req, res) {
         notaFinal,
         comentarioFinal || null,
         avaliacaoRegistradaEmFinal,
+        protocoloAtendimento,
         id,
       ]
     );
@@ -744,6 +837,23 @@ async function updateAgendamento(req, res) {
     client = null;
 
     let reviewRequest = null;
+    let rescheduleNotification = null;
+    if (alterouHorario && statusFinal !== 'cancelado') {
+      rescheduleNotification = await enviarRemarcacaoAutomaticaAgendamentoSeguro({
+        barbeariaId: atual.barbearia_id,
+        phoneNumber: atual.cliente_telefone,
+        nomeCliente: atual.cliente_nome,
+        nomeBarbearia: atual.barbearia_nome,
+        enderecoBarbearia: atual.barbearia_endereco,
+        servicoNome: atual.servico_nome || 'Serviço',
+        dataAnterior: dataAtual,
+        horaAnterior: horaAtual,
+        data: dataFinal,
+        hora: horaFinal,
+        protocoloAtendimento: result.rows[0]?.protocolo_atendimento || protocoloAtendimento,
+      });
+    }
+
     if (deveSolicitarAvaliacao) {
       try {
         reviewRequest = await enviarSolicitacaoAvaliacaoConclusao({
@@ -767,7 +877,7 @@ async function updateAgendamento(req, res) {
       }
     }
 
-    res.json({ agendamento: result.rows[0], rating, reviewRequest });
+    res.json({ agendamento: result.rows[0], rating, reviewRequest, rescheduleNotification });
   } catch (error) {
     if (client) {
       try {
