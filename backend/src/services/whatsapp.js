@@ -22,6 +22,11 @@ class WhatsAppService {
     return `${match[3]}/${match[2]}`;
   }
 
+  static formatarHoraCurta(hora = '') {
+    const match = String(hora || '').match(/(\d{2}):(\d{2})/);
+    return match ? `${match[1]}:${match[2]}` : String(hora || '--:--');
+  }
+
   static formatarTelefone(telefone = '') {
     const numero = this.limparTelefone(telefone);
     if (numero.length === 13) {
@@ -74,19 +79,49 @@ class WhatsAppService {
       nomeBarbearia,
       enderecoBarbearia,
       barbeiroNome,
+      protocoloAtendimento,
     } = dados;
 
     const dataFormatada = this.formatarDataCurtaBR(data);
     const profissional = barbeiroNome ? `\n*Profissional:* ${barbeiroNome}` : '';
     const endereco = enderecoBarbearia ? `\n*Local:* ${enderecoBarbearia}` : '';
+    const protocolo = protocoloAtendimento ? `\n*Protocolo:* ${protocoloAtendimento}` : '';
 
     return `Olá ${nomeCliente || 'cliente'}! Seu agendamento na *${nomeBarbearia || 'barbearia'}* foi confirmado.
 
 *Serviço:* ${servico || 'Serviço agendado'}
 *Data:* ${dataFormatada}
-*Hora:* ${hora || '--:--'}${profissional}${endereco}
+*Hora:* ${this.formatarHoraCurta(hora)}${profissional}${endereco}${protocolo}
 
-Se precisar ajustar ou remarcar, é só responder por aqui.`;
+Se precisar ajustar ou remarcar, é só responder por aqui${protocoloAtendimento ? ` com o protocolo *${protocoloAtendimento}*.` : '.'}`;
+  }
+
+  static templateAgendamentoRemarcadoCliente(dados) {
+    const {
+      nomeCliente,
+      servico,
+      data,
+      hora,
+      dataAnterior,
+      horaAnterior,
+      nomeBarbearia,
+      enderecoBarbearia,
+      barbeiroNome,
+      protocoloAtendimento,
+    } = dados;
+
+    const profissional = barbeiroNome ? `\n*Profissional:* ${barbeiroNome}` : '';
+    const endereco = enderecoBarbearia ? `\n*Local:* ${enderecoBarbearia}` : '';
+    const protocolo = protocoloAtendimento ? `\n*Protocolo:* ${protocoloAtendimento}` : '';
+    const instrucoes = protocoloAtendimento
+      ? `\n\nSe precisar remarcar novamente pelo WhatsApp, responda com o protocolo *${protocoloAtendimento}*.`
+      : '';
+
+    return `Olá ${nomeCliente || 'cliente'}! Seu agendamento na *${nomeBarbearia || 'barbearia'}* foi remarcado.
+
+*Serviço:* ${servico || 'Serviço agendado'}
+*De:* ${this.formatarDataCurtaBR(dataAnterior)} às ${this.formatarHoraCurta(horaAnterior)}
+*Para:* ${this.formatarDataCurtaBR(data)} às ${this.formatarHoraCurta(hora)}${profissional}${endereco}${protocolo}${instrucoes}`;
   }
 
   static templateAgendamentoBarbearia(dados) {
@@ -99,19 +134,21 @@ Se precisar ajustar ou remarcar, é só responder por aqui.`;
       nomeBarbearia,
       enderecoBarbearia,
       barbeiroNome,
+      protocoloAtendimento,
     } = dados;
 
     const dataFormatada = this.formatarDataBR(data);
     const profissional = barbeiroNome ? `\n*Profissional:* ${barbeiroNome}` : '';
     const endereco = enderecoBarbearia ? `\n*Endereço:* ${enderecoBarbearia}` : '';
     const telefone = telefoneCliente ? `\n*Telefone cliente:* ${this.formatarTelefone(telefoneCliente)}` : '';
+    const protocolo = protocoloAtendimento ? `\n*Protocolo:* ${protocoloAtendimento}` : '';
 
     return `Novo agendamento pelo site na *${nomeBarbearia || 'barbearia'}*.
 
 *Cliente:* ${nomeCliente || 'Cliente'}${telefone}
 *Serviço:* ${servico || 'Serviço agendado'}
 *Data:* ${dataFormatada}
-*Hora:* ${hora || '--:--'}${profissional}${endereco}
+*Hora:* ${this.formatarHoraCurta(hora)}${profissional}${endereco}${protocolo}
 
 Origem: site`;
   }

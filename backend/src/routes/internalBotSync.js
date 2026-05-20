@@ -3,6 +3,10 @@ const config = require('../config');
 const { getBarbeariaSyncPayload } = require('../services/botSync');
 const { ensureAgendamentoSchema } = require('../services/agendamentoSchema');
 const { ensureServicoAvailabilitySchema } = require('../services/servicoAvailability');
+const {
+  gerarProtocoloAtendimentoUnico,
+  normalizarProtocoloAtendimento,
+} = require('../services/appointmentProtocol');
 const pool = require('../config/database');
 
 const router = express.Router();
@@ -69,10 +73,52 @@ function serializarAgendamentoPayload(payload = {}) {
     data: normalizarData(appointment.data),
     hora: normalizarHora(appointment.hora),
     status: text(appointment.status) || 'pendente',
+    protocolo_atendimento: normalizarProtocoloAtendimento(appointment.protocolo_atendimento || appointment.protocoloAtendimento),
     chatbot_session_id: nullableText(appointment.chatbot_session_id || appointment.chatbotSessionId),
     observacoes: nullableText(appointment.observacoes),
     origem: text(appointment.origem) || 'whatsapp',
   };
+}
+
+function phoneVariants(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return [];
+
+  const variants = new Set([digits]);
+  if (digits.startsWith('55')) {
+    variants.add(digits.slice(2));
+  } else {
+    variants.add(`55${digits}`);
+  }
+
+  return Array.from(variants).filter(Boolean);
+}
+
+function phoneMatches(received = '', stored = '') {
+  const receivedVariants = phoneVariants(received);
+  const storedVariants = phoneVariants(stored);
+  return receivedVariants.length > 0 && storedVariants.some((item) => receivedVariants.includes(item));
+}
+
+async function reservarProtocoloAtendimento({ protocolo, appointmentId }) {
+  const normalized = normalizarProtocoloAtendimento(protocolo);
+
+  if (normalized) {
+    const conflito = await pool.query(
+      `SELECT id
+       FROM agendamentos
+       WHERE protocolo_atendimento = $1
+         AND id != $2
+       LIMIT 1`,
+      [normalized, appointmentId]
+    );
+
+    if (conflito.rows.length === 0) {
+      return normalized;
+    }
+  }
+
+  return gerarProtocoloAtendimentoUnico(pool);
 }
 
 async function normalizarServicoId(servicoId, barbeariaId) {
@@ -217,6 +263,10 @@ router.post('/appointments', async (req, res) => {
     appointment.servico_id = servicoId;
     appointment.cliente_id = clienteId;
     appointment.barbeiro_id = barbeiroId;
+    appointment.protocolo_atendimento = await reservarProtocoloAtendimento({
+      protocolo: appointment.protocolo_atendimento,
+      appointmentId: appointment.id,
+    });
 
     if (appointment.status !== 'cancelado') {
       const conflito = await pool.query(
@@ -254,11 +304,12 @@ router.post('/appointments', async (req, res) => {
          data,
          hora,
          status,
+         protocolo_atendimento,
          chatbot_session_id,
          observacoes,
          origem
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        ON DUPLICATE KEY UPDATE
          barbearia_id = VALUES(barbearia_id),
          servico_id = VALUES(servico_id),
@@ -271,6 +322,7 @@ router.post('/appointments', async (req, res) => {
          data = VALUES(data),
          hora = VALUES(hora),
          status = VALUES(status),
+         protocolo_atendimento = COALESCE(VALUES(protocolo_atendimento), protocolo_atendimento),
          chatbot_session_id = VALUES(chatbot_session_id),
          observacoes = VALUES(observacoes),
          origem = VALUES(origem),
@@ -288,6 +340,7 @@ router.post('/appointments', async (req, res) => {
         appointment.data,
         appointment.hora,
         appointment.status,
+        appointment.protocolo_atendimento,
         appointment.chatbot_session_id,
         appointment.observacoes,
         appointment.origem,
@@ -319,6 +372,183 @@ router.post('/appointments', async (req, res) => {
     res.status(500).json({
       error: error?.message || 'Não foi possível sincronizar o agendamento do bot.',
       code: 'APPOINTMENT_SYNC_FAILED',
+    });
+  }
+});
+
+router.get('/appointments/protocol/:protocol', async (req, res) => {
+  try {
+    await ensureAgendamentoSchema();
+
+    const protocolo = normalizarProtocoloAtendimento(req.params?.protocol);
+    const barbeariaId = text(req.query?.barbearia_id || req.query?.barbeariaId);
+    const phoneNumber = text(req.query?.phone_number || req.query?.phoneNumber);
+
+    if (!protocolo || !barbeariaId || !phoneNumber) {
+      return res.status(400).json({
+        error: 'Protocolo, barbearia e telefone são obrigatórios.',
+        code: 'INVALID_PROTOCOL_LOOKUP_PAYLOAD',
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         a.*,
+         COALESCE(c.nome, a.cliente_nome_externo, 'Cliente') AS cliente_nome,
+         COALESCE(c.telefone, a.cliente_telefone_externo, '') AS cliente_telefone,
+         COALESCE(a.servico_nome_snapshot, s.nome, NULLIF(a.observacoes, '')) AS servico_nome,
+         COALESCE(a.servico_preco_snapshot, s.preco, 0) AS servico_preco,
+         COALESCE(s.duracao_minutos, 30) AS servico_duracao,
+         b.nome AS barbearia_nome,
+         b.endereco AS barbearia_endereco
+       FROM agendamentos a
+       LEFT JOIN usuarios c ON c.id = a.cliente_id
+       LEFT JOIN servicos s ON s.id = a.servico_id
+       LEFT JOIN barbearias b ON b.id = a.barbearia_id
+       WHERE a.protocolo_atendimento = $1
+         AND a.barbearia_id = $2
+       LIMIT 1`,
+      [protocolo, barbeariaId]
+    );
+
+    const appointment = result.rows[0];
+    if (!appointment || !phoneMatches(phoneNumber, appointment.cliente_telefone)) {
+      return res.status(404).json({
+        error: 'Não encontrei agendamento para este protocolo e telefone.',
+        code: 'APPOINTMENT_PROTOCOL_NOT_FOUND',
+      });
+    }
+
+    if (['cancelado', 'faltou', 'concluido'].includes(String(appointment.status || '').toLowerCase())) {
+      return res.status(409).json({
+        error: 'Este agendamento não está disponível para remarcação pelo WhatsApp.',
+        code: 'APPOINTMENT_NOT_RESCHEDULABLE',
+      });
+    }
+
+    res.json({
+      ok: true,
+      agendamento: appointment,
+    });
+  } catch (error) {
+    console.error('[INTERNAL_BOT_SYNC.protocol] Falha ao buscar agendamento por protocolo', {
+      message: error?.message,
+      code: error?.code,
+    }, error);
+
+    res.status(500).json({
+      error: error?.message || 'Não foi possível buscar o agendamento pelo protocolo.',
+      code: 'APPOINTMENT_PROTOCOL_LOOKUP_FAILED',
+    });
+  }
+});
+
+router.post('/appointments/:id/reschedule', async (req, res) => {
+  try {
+    await ensureAgendamentoSchema();
+
+    const id = text(req.params?.id);
+    const barbeariaId = text(req.body?.barbearia_id || req.body?.barbeariaId);
+    const phoneNumber = text(req.body?.phone_number || req.body?.phoneNumber);
+    const data = normalizarData(req.body?.data);
+    const hora = normalizarHora(req.body?.hora);
+
+    if (!id || !barbeariaId || !phoneNumber || !data || !hora) {
+      return res.status(400).json({
+        error: 'Agendamento, barbearia, telefone, data e hora são obrigatórios.',
+        code: 'INVALID_APPOINTMENT_RESCHEDULE_PAYLOAD',
+      });
+    }
+
+    const atualResult = await pool.query(
+      `SELECT
+         a.*,
+         COALESCE(c.nome, a.cliente_nome_externo, 'Cliente') AS cliente_nome,
+         COALESCE(c.telefone, a.cliente_telefone_externo, '') AS cliente_telefone,
+         COALESCE(a.servico_nome_snapshot, s.nome, NULLIF(a.observacoes, '')) AS servico_nome,
+         COALESCE(a.servico_preco_snapshot, s.preco, 0) AS servico_preco,
+         COALESCE(s.duracao_minutos, 30) AS servico_duracao,
+         b.nome AS barbearia_nome,
+         b.endereco AS barbearia_endereco
+       FROM agendamentos a
+       LEFT JOIN usuarios c ON c.id = a.cliente_id
+       LEFT JOIN servicos s ON s.id = a.servico_id
+       LEFT JOIN barbearias b ON b.id = a.barbearia_id
+       WHERE a.id = $1
+         AND a.barbearia_id = $2
+       LIMIT 1`,
+      [id, barbeariaId]
+    );
+
+    const atual = atualResult.rows[0];
+    if (!atual || !phoneMatches(phoneNumber, atual.cliente_telefone)) {
+      return res.status(404).json({
+        error: 'Agendamento não encontrado para este telefone.',
+        code: 'APPOINTMENT_NOT_FOUND',
+      });
+    }
+
+    if (['cancelado', 'faltou', 'concluido'].includes(String(atual.status || '').toLowerCase())) {
+      return res.status(409).json({
+        error: 'Este agendamento não está disponível para remarcação pelo WhatsApp.',
+        code: 'APPOINTMENT_NOT_RESCHEDULABLE',
+      });
+    }
+
+    const conflito = await pool.query(
+      `SELECT id
+       FROM agendamentos
+       WHERE barbearia_id = $1
+         AND data = $2
+         AND hora = $3
+         AND status != $4
+         AND id != $5
+       LIMIT 1`,
+      [barbeariaId, data, hora, 'cancelado', id]
+    );
+
+    if (conflito.rows.length > 0) {
+      return res.status(409).json({
+        error: 'Horário não disponível na agenda principal.',
+        code: 'TIME_CONFLICT',
+      });
+    }
+
+    const protocoloAtendimento = atual.protocolo_atendimento || await gerarProtocoloAtendimentoUnico(pool);
+    const updateResult = await pool.query(
+      `UPDATE agendamentos
+       SET data = $1,
+           hora = $2,
+           protocolo_atendimento = COALESCE(protocolo_atendimento, $3),
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [data, hora, protocoloAtendimento, id]
+    );
+
+    res.json({
+      ok: true,
+      previous: {
+        data: atual.data,
+        hora: atual.hora,
+      },
+      agendamento: {
+        ...atual,
+        ...(updateResult.rows[0] || {}),
+        data,
+        hora,
+        protocolo_atendimento: protocoloAtendimento,
+      },
+    });
+  } catch (error) {
+    console.error('[INTERNAL_BOT_SYNC.reschedule] Falha ao remarcar agendamento pelo bot', {
+      message: error?.message,
+      code: error?.code,
+    }, error);
+
+    res.status(500).json({
+      error: error?.message || 'Não foi possível remarcar o agendamento pelo bot.',
+      code: 'APPOINTMENT_RESCHEDULE_FAILED',
     });
   }
 });

@@ -24,6 +24,49 @@ function normalizarHora(valor = '') {
   return `${match[1]}:${match[2]}:${match[3] || '00'}`;
 }
 
+async function requestBackend(path, { method = 'GET', body } = {}) {
+  if (!config.backendSync.enabled) {
+    const error = new Error('Sincronização com a API principal desativada.');
+    error.code = 'BACKEND_SYNC_DISABLED';
+    throw error;
+  }
+
+  if (!config.botServiceToken) {
+    const error = new Error('BOT_SERVICE_TOKEN não configurado no bot.');
+    error.code = 'BOT_SERVICE_TOKEN_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.backendSync.timeoutMs);
+
+  try {
+    const response = await fetch(`${config.backendSync.apiUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${config.botServiceToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload?.error || 'Falha ao comunicar com a API principal.');
+      error.code = payload?.code || 'BACKEND_REQUEST_FAILED';
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
+    }
+
+    return payload;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function serializarAgendamento(agendamento = {}) {
   return {
     id: normalizarTexto(agendamento.id),
@@ -38,6 +81,7 @@ function serializarAgendamento(agendamento = {}) {
     data: normalizarData(agendamento.data),
     hora: normalizarHora(agendamento.hora),
     status: normalizarTexto(agendamento.status) || 'pendente',
+    protocolo_atendimento: normalizarTexto(agendamento.protocolo_atendimento || agendamento.protocoloAtendimento),
     chatbot_session_id: normalizarTexto(agendamento.chatbot_session_id || agendamento.chatbotSessionId),
     observacoes: normalizarTexto(agendamento.observacoes),
     origem: normalizarTexto(agendamento.origem) || 'whatsapp',
@@ -64,34 +108,53 @@ async function syncAppointmentToBackend(agendamento = {}) {
     throw error;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.backendSync.timeoutMs);
+  return requestBackend('/internal/bot/appointments', {
+    method: 'POST',
+    body: { appointment },
+  });
+}
 
-  try {
-    const response = await fetch(`${config.backendSync.apiUrl}/internal/bot/appointments`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.botServiceToken}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ appointment }),
-      signal: controller.signal,
-    });
+async function fetchAppointmentByProtocol({ protocolo, barbeariaId, phoneNumber } = {}) {
+  const normalizedProtocol = normalizarTexto(protocolo).replace(/\D/g, '');
+  const normalizedBarbeariaId = normalizarTexto(barbeariaId);
+  const normalizedPhone = normalizarTexto(phoneNumber);
 
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(payload?.error || 'Falha ao sincronizar agendamento com a API principal.');
-      error.code = payload?.code || 'BACKEND_APPOINTMENT_SYNC_FAILED';
-      error.status = response.status;
-      error.payload = payload;
-      throw error;
-    }
-
-    return payload;
-  } finally {
-    clearTimeout(timeout);
+  if (!normalizedProtocol || !normalizedBarbeariaId || !normalizedPhone) {
+    const error = new Error('Protocolo, barbearia e telefone são obrigatórios.');
+    error.code = 'INVALID_PROTOCOL_LOOKUP_PAYLOAD';
+    throw error;
   }
+
+  const params = new URLSearchParams({
+    barbearia_id: normalizedBarbeariaId,
+    phone_number: normalizedPhone,
+  });
+
+  return requestBackend(`/internal/bot/appointments/protocol/${encodeURIComponent(normalizedProtocol)}?${params.toString()}`);
+}
+
+async function rescheduleAppointmentInBackend({ appointmentId, barbeariaId, phoneNumber, data, hora } = {}) {
+  const normalizedAppointmentId = normalizarTexto(appointmentId);
+  const normalizedBarbeariaId = normalizarTexto(barbeariaId);
+  const normalizedPhone = normalizarTexto(phoneNumber);
+  const normalizedData = normalizarData(data);
+  const normalizedHora = normalizarHora(hora);
+
+  if (!normalizedAppointmentId || !normalizedBarbeariaId || !normalizedPhone || !normalizedData || !normalizedHora) {
+    const error = new Error('Agendamento, barbearia, telefone, data e hora são obrigatórios.');
+    error.code = 'INVALID_APPOINTMENT_RESCHEDULE_PAYLOAD';
+    throw error;
+  }
+
+  return requestBackend(`/internal/bot/appointments/${encodeURIComponent(normalizedAppointmentId)}/reschedule`, {
+    method: 'POST',
+    body: {
+      barbearia_id: normalizedBarbeariaId,
+      phone_number: normalizedPhone,
+      data: normalizedData,
+      hora: normalizedHora,
+    },
+  });
 }
 
 async function markAppointmentBackendSyncStatus(appointmentId, status, errorMessage = '') {
@@ -143,6 +206,7 @@ async function syncPendingAppointmentsToBackend({ limit = 50 } = {}) {
        data,
        hora,
        status,
+       protocolo_atendimento,
        chatbot_session_id,
        observacoes,
        origem
@@ -201,6 +265,8 @@ async function syncPendingAppointmentsToBackend({ limit = 50 } = {}) {
 module.exports = {
   serializarAgendamento,
   syncAppointmentToBackend,
+  fetchAppointmentByProtocol,
+  rescheduleAppointmentInBackend,
   markAppointmentBackendSyncStatus,
   syncPendingAppointmentsToBackend,
 };
