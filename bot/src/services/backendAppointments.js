@@ -1,10 +1,19 @@
 const config = require('../config');
+const pool = require('../config/database');
+const { ensureAgendamentoSchema } = require('./agendamentoSchema');
 
 function normalizarTexto(valor = '') {
   return String(valor || '').trim();
 }
 
 function normalizarData(valor = '') {
+  if (valor instanceof Date) {
+    const ano = valor.getUTCFullYear();
+    const mes = String(valor.getUTCMonth() + 1).padStart(2, '0');
+    const dia = String(valor.getUTCDate()).padStart(2, '0');
+    return `${ano}-${mes}-${dia}`;
+  }
+
   const match = String(valor || '').match(/\d{4}-\d{2}-\d{2}/);
   return match ? match[0] : '';
 }
@@ -85,7 +94,113 @@ async function syncAppointmentToBackend(agendamento = {}) {
   }
 }
 
+async function markAppointmentBackendSyncStatus(appointmentId, status, errorMessage = '') {
+  const id = normalizarTexto(appointmentId);
+  if (!id) return;
+
+  if (status === 'synced') {
+    await pool.query(
+      `UPDATE agendamentos
+       SET backend_sync_status = $2,
+           backend_sync_error = NULL,
+           backend_synced_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [id, status]
+    );
+    return;
+  }
+
+  await pool.query(
+    `UPDATE agendamentos
+     SET backend_sync_status = $2,
+         backend_sync_error = $3,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1`,
+    [id, status || 'failed', normalizarTexto(errorMessage).slice(0, 1000) || null]
+  );
+}
+
+async function syncPendingAppointmentsToBackend({ limit = 50 } = {}) {
+  await ensureAgendamentoSchema();
+
+  if (!config.backendSync.enabled) {
+    return { skipped: true, reason: 'BACKEND_SYNC_DISABLED' };
+  }
+
+  const safeLimit = Math.min(200, Math.max(1, Math.floor(Number(limit) || 50)));
+  const result = await pool.query(
+    `SELECT
+       id,
+       barbearia_id,
+       servico_id,
+       servico_nome_snapshot,
+       servico_preco_snapshot,
+       cliente_id,
+       cliente_nome_externo,
+       cliente_telefone_externo,
+       barbeiro_id,
+       data,
+       hora,
+       status,
+       chatbot_session_id,
+       observacoes,
+       origem
+     FROM agendamentos
+     WHERE origem = 'whatsapp'
+       AND status NOT IN ('cancelado', 'faltou')
+       AND (
+         backend_sync_status IS NULL
+         OR backend_sync_status = ''
+         OR backend_sync_status != 'synced'
+       )
+     ORDER BY created_at ASC
+     LIMIT $1`,
+    [safeLimit]
+  );
+
+  const items = result.rows || [];
+  let synced = 0;
+  let failed = 0;
+
+  for (const item of items) {
+    try {
+      const response = await syncAppointmentToBackend(item);
+      if (!response?.agendamento) {
+        const error = new Error('API principal confirmou a chamada, mas nao retornou o agendamento sincronizado.');
+        error.code = 'BACKEND_SYNC_EMPTY_RESPONSE';
+        throw error;
+      }
+
+      await markAppointmentBackendSyncStatus(item.id, 'synced');
+      synced += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn('[BACKEND_APPOINTMENTS] Falha ao sincronizar agendamento pendente', {
+        agendamentoId: item.id,
+        barbeariaId: item.barbearia_id,
+        code: error?.code,
+        status: error?.status,
+        message: error?.message,
+        payload: error?.payload,
+      });
+
+      await markAppointmentBackendSyncStatus(item.id, 'failed', error?.message || 'Falha ao sincronizar com a API principal.')
+        .catch(() => undefined);
+    }
+  }
+
+  return {
+    ok: true,
+    checked: items.length,
+    synced,
+    failed,
+  };
+}
+
 module.exports = {
   serializarAgendamento,
   syncAppointmentToBackend,
+  markAppointmentBackendSyncStatus,
+  syncPendingAppointmentsToBackend,
 };

@@ -7,6 +7,7 @@ const { runSchedulerTick } = require('./services/baileysRuntime');
 const { markStaleChatbotSessionsAsAbandoned } = require('./services/chatbotTraining');
 const { listActiveSessionIds } = require('./services/botStateStore');
 const { reconcileFromBackend } = require('./services/backendReconciler');
+const { syncPendingAppointmentsToBackend } = require('./services/backendAppointments');
 
 let running = false;
 
@@ -20,6 +21,10 @@ async function tick() {
     const scheduler = await runSchedulerTick();
     const activeSessionIds = await listActiveSessionIds().catch(() => []);
     const backendSync = await reconcileFromBackend().catch((error) => ({
+      ok: false,
+      error: error?.message,
+    }));
+    const appointmentSync = await syncPendingAppointmentsToBackend({ limit: 50 }).catch((error) => ({
       ok: false,
       error: error?.message,
     }));
@@ -38,6 +43,7 @@ async function tick() {
       redis,
       queueDepths,
       backendSync,
+      appointmentSync,
       activeSessions: scheduler.activeSessions,
       localRuntimeSessions: scheduler.localRuntimeSessions,
     });
