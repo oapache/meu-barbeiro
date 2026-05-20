@@ -947,6 +947,7 @@ async function criarAgendamentoExterno({
       code: error?.code,
       status: error?.status,
       message: error?.message,
+      payload: error?.payload,
     }, error);
 
     await markAppointmentBackendSyncStatus(agendamento?.id, 'failed', error?.message || 'Falha ao sincronizar com a agenda principal.')

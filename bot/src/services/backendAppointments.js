@@ -176,6 +176,15 @@ async function syncPendingAppointmentsToBackend({ limit = 50 } = {}) {
       synced += 1;
     } catch (error) {
       failed += 1;
+      console.warn('[BACKEND_APPOINTMENTS] Falha ao sincronizar agendamento pendente', {
+        agendamentoId: item.id,
+        barbeariaId: item.barbearia_id,
+        code: error?.code,
+        status: error?.status,
+        message: error?.message,
+        payload: error?.payload,
+      });
+
       await markAppointmentBackendSyncStatus(item.id, 'failed', error?.message || 'Falha ao sincronizar com a API principal.')
         .catch(() => undefined);
     }

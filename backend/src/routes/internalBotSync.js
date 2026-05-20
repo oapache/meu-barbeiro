@@ -75,6 +75,34 @@ function serializarAgendamentoPayload(payload = {}) {
   };
 }
 
+async function normalizarServicoId(servicoId, barbeariaId) {
+  const id = nullableText(servicoId);
+  if (!id) return null;
+
+  const result = await pool.query(
+    'SELECT id FROM servicos WHERE id = $1 AND barbearia_id = $2 LIMIT 1',
+    [id, barbeariaId]
+  );
+
+  return result.rows[0]?.id || null;
+}
+
+async function normalizarUsuarioId(usuarioId, { tipo } = {}) {
+  const id = nullableText(usuarioId);
+  if (!id) return null;
+
+  const params = [id];
+  let query = 'SELECT id FROM usuarios WHERE id = $1';
+  if (tipo) {
+    params.push(tipo);
+    query += ' AND tipo = $2';
+  }
+  query += ' LIMIT 1';
+
+  const result = await pool.query(query, params);
+  return result.rows[0]?.id || null;
+}
+
 async function listChangedBarbeariaIds({ since, limit }) {
   await ensureServicoAvailabilitySchema();
 
@@ -180,6 +208,16 @@ router.post('/appointments', async (req, res) => {
       });
     }
 
+    const [servicoId, clienteId, barbeiroId] = await Promise.all([
+      normalizarServicoId(appointment.servico_id, appointment.barbearia_id),
+      normalizarUsuarioId(appointment.cliente_id),
+      normalizarUsuarioId(appointment.barbeiro_id, { tipo: 'barbeiro' }),
+    ]);
+
+    appointment.servico_id = servicoId;
+    appointment.cliente_id = clienteId;
+    appointment.barbeiro_id = barbeiroId;
+
     if (appointment.status !== 'cancelado') {
       const conflito = await pool.query(
         `SELECT id
@@ -269,6 +307,13 @@ router.post('/appointments', async (req, res) => {
     console.error('[INTERNAL_BOT_SYNC.appointments] Falha ao sincronizar agendamento do bot', {
       message: error?.message,
       code: error?.code,
+      appointment: {
+        id: req.body?.appointment?.id || req.body?.agendamento?.id || req.body?.id,
+        barbearia_id: req.body?.appointment?.barbearia_id || req.body?.agendamento?.barbearia_id || req.body?.barbearia_id,
+        servico_id: req.body?.appointment?.servico_id || req.body?.agendamento?.servico_id || req.body?.servico_id,
+        data: req.body?.appointment?.data || req.body?.agendamento?.data || req.body?.data,
+        hora: req.body?.appointment?.hora || req.body?.agendamento?.hora || req.body?.hora,
+      },
     }, error);
 
     res.status(500).json({
