@@ -37,6 +37,9 @@ async function executarGarantiasSchema() {
       avaliacao_nota INTEGER,
       avaliacao_comentario TEXT,
       avaliacao_registrada_em DATETIME,
+      backend_sync_status VARCHAR(30) DEFAULT 'pending',
+      backend_sync_error TEXT,
+      backend_synced_at DATETIME,
       observacoes TEXT,
       origem VARCHAR(30) DEFAULT 'app',
       created_at DATETIME DEFAULT NOW(),
@@ -61,7 +64,10 @@ async function executarGarantiasSchema() {
     ADD COLUMN IF NOT EXISTS servico_preco_snapshot NUMERIC(10,2),
     ADD COLUMN IF NOT EXISTS avaliacao_nota INTEGER,
     ADD COLUMN IF NOT EXISTS avaliacao_comentario TEXT,
-    ADD COLUMN IF NOT EXISTS avaliacao_registrada_em DATETIME
+    ADD COLUMN IF NOT EXISTS avaliacao_registrada_em DATETIME,
+    ADD COLUMN IF NOT EXISTS backend_sync_status VARCHAR(30) DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS backend_sync_error TEXT,
+    ADD COLUMN IF NOT EXISTS backend_synced_at DATETIME
   `);
 }
 

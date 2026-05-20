@@ -2,7 +2,10 @@ const pool = require('../config/database');
 const WhatsAppService = require('./whatsapp');
 const { ensureAgendamentoSchema } = require('./agendamentoSchema');
 const { registrarAvaliacaoAtendimento, normalizarAvaliacaoNota } = require('./barbeariaRatings');
-const { syncAppointmentToBackend } = require('./backendAppointments');
+const {
+  markAppointmentBackendSyncStatus,
+  syncAppointmentToBackend,
+} = require('./backendAppointments');
 const {
   ensureChatbotTrainingSchema,
   getChatbotOperationalSettings,
@@ -904,9 +907,10 @@ async function criarAgendamentoExterno({
        status,
        chatbot_session_id,
        observacoes,
-       origem
+       origem,
+       backend_sync_status
       )
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, 'pendente', $9, $10, 'whatsapp')
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, 'pendente', $9, $10, 'whatsapp', 'pending')
       RETURNING *`,
     [
       barbeariaId,
@@ -926,11 +930,16 @@ async function criarAgendamentoExterno({
   try {
     const backendSync = await syncAppointmentToBackend(agendamento);
     if (backendSync?.agendamento) {
+      await markAppointmentBackendSyncStatus(agendamento.id, 'synced');
       return {
         created: true,
         agendamento: backendSync.agendamento,
       };
     }
+
+    const syncError = new Error('API principal confirmou a chamada, mas nao retornou o agendamento sincronizado.');
+    syncError.code = 'BACKEND_SYNC_EMPTY_RESPONSE';
+    throw syncError;
   } catch (error) {
     console.error('[CHATBOT_CONVERSATION] Falha ao sincronizar agendamento com a API principal', {
       barbeariaId,
@@ -939,6 +948,9 @@ async function criarAgendamentoExterno({
       status: error?.status,
       message: error?.message,
     }, error);
+
+    await markAppointmentBackendSyncStatus(agendamento?.id, 'failed', error?.message || 'Falha ao sincronizar com a agenda principal.')
+      .catch(() => undefined);
 
     await pool.query(
       `UPDATE agendamentos

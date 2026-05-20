@@ -16,6 +16,7 @@ const { getBarbeariaSubscriptionAccess } = require('./subscriptionAccess');
 const { getChatbotOperationalSettings } = require('./chatbotTraining');
 
 const WHATSAPP_BOT_ALLOWED_STATUSES = ['active', 'trialing', 'past_due'];
+const RECOVERABLE_STALE_STATUSES = new Set(['ready', 'authenticated', 'starting', 'qr_ready']);
 
 function assinaturaPermiteBot(status) {
   return WHATSAPP_BOT_ALLOWED_STATUSES.includes(String(status || '').trim());
@@ -36,7 +37,7 @@ function criarErroAssinaturaBloqueandoBot(status) {
 
 async function getBotState(barbeariaId) {
   const normalizedBarbeariaId = normalizarBarbeariaId(barbeariaId);
-  const state = await readBotState(normalizedBarbeariaId);
+  const state = await recoverStaleBotState(normalizedBarbeariaId, await readBotState(normalizedBarbeariaId));
   return toPublicState(state);
 }
 
@@ -48,6 +49,51 @@ async function waitForJobResult(queue, job, timeoutMs = 10000) {
   } catch {
     return null;
   }
+}
+
+async function enqueueReconnectJob(normalizedBarbeariaId, reason = 'status-recover') {
+  const queues = getQueues();
+  return queues.session.add('reconnect', {
+    barbeariaId: normalizedBarbeariaId,
+  }, {
+    jobId: buildJobId([reason, normalizedBarbeariaId, Date.now(), Math.random().toString(36).slice(2, 8)]),
+  });
+}
+
+async function recoverStaleBotState(normalizedBarbeariaId, state = {}) {
+  if (!normalizedBarbeariaId || !RECOVERABLE_STALE_STATUSES.has(String(state.status || ''))) {
+    return state;
+  }
+
+  if (!state.requestedPhoneNumber) {
+    return state;
+  }
+
+  const activeSessionIds = await listActiveSessionIds().catch(() => []);
+  if (activeSessionIds.includes(normalizedBarbeariaId)) {
+    return state;
+  }
+
+  const recoveringState = await writeBotState(normalizedBarbeariaId, {
+    status: 'starting',
+    isAuthenticated: false,
+    qrCodeDataUrl: '',
+    qrCodeText: '',
+    loadingPercent: 35,
+    lastError: '',
+    lastMessage: 'Sessão do WhatsApp sem runtime ativo. Reconectando automaticamente...',
+  });
+
+  await enqueueReconnectJob(normalizedBarbeariaId).catch(async (error) => {
+    await writeBotState(normalizedBarbeariaId, {
+      status: 'error',
+      loadingPercent: 0,
+      lastError: error?.message || 'Falha ao enfileirar reconexão do WhatsApp.',
+      lastMessage: 'Não foi possível reconectar automaticamente. Gere um novo QR Code.',
+    }).catch(() => undefined);
+  });
+
+  return recoveringState;
 }
 
 async function enqueueSessionJob(name, data = {}, { wait = true } = {}) {

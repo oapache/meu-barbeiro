@@ -81,6 +81,18 @@ async function obterSnapshotServico({
   };
 }
 
+async function normalizarBarbeiroUsuarioId(barbeiroId) {
+  const id = String(barbeiroId || '').trim();
+  if (!id) return null;
+
+  const result = await pool.query(
+    "SELECT id FROM usuarios WHERE id = $1 AND tipo = 'barbeiro' LIMIT 1",
+    [id]
+  );
+
+  return result.rows[0]?.id || null;
+}
+
 async function montarPayloadWhatsAppAgendamento({
   barbearia_id,
   servico_id,
@@ -144,6 +156,24 @@ async function enviarConfirmacaoAutomaticaAgendamento(barbeariaId, whatsappPaylo
     phoneNumber: whatsappPayload.cliente.telefone,
     message: whatsappPayload.cliente.mensagem,
   });
+}
+
+async function enviarConfirmacaoAutomaticaAgendamentoSeguro(barbeariaId, whatsappPayload) {
+  try {
+    return await enviarConfirmacaoAutomaticaAgendamento(barbeariaId, whatsappPayload);
+  } catch (error) {
+    console.warn('[AGENDAMENTO.whatsapp] Falha ao enviar confirmacao automatica', {
+      barbeariaId,
+      message: error?.message,
+      status: error?.status,
+    });
+
+    return {
+      sent: false,
+      reason: 'BOT_CONFIRMATION_FAILED',
+      error: error?.message || 'Nao foi possivel enviar a confirmacao automatica pelo WhatsApp.',
+    };
+  }
 }
 
 async function enviarSolicitacaoAvaliacaoConclusao({
@@ -368,6 +398,8 @@ async function createAgendamento(req, res) {
     if (snapshotServico.error) {
       return res.status(400).json({ error: snapshotServico.error });
     }
+
+    const barbeiroUsuarioId = await normalizarBarbeiroUsuarioId(barbeiro_id);
     
     const result = await pool.query(
       `INSERT INTO agendamentos (
@@ -390,7 +422,7 @@ async function createAgendamento(req, res) {
         snapshotServico.servicoNomeSnapshot,
         snapshotServico.servicoPrecoSnapshot,
         clienteId,
-        barbeiro_id || null,
+        barbeiroUsuarioId,
         data,
         hora,
         observacoes || null,
@@ -403,11 +435,11 @@ async function createAgendamento(req, res) {
       servico_id: snapshotServico.servicoId,
       servico_nome: snapshotServico.servicoNomeSnapshot,
       cliente_id: clienteId,
-      barbeiro_id,
+      barbeiro_id: barbeiroUsuarioId,
       data,
       hora,
     });
-    const whatsappAutomation = await enviarConfirmacaoAutomaticaAgendamento(barbearia_id, whatsapp);
+    const whatsappAutomation = await enviarConfirmacaoAutomaticaAgendamentoSeguro(barbearia_id, whatsapp);
 
     res.status(201).json({
       agendamento: result.rows[0],
@@ -484,6 +516,8 @@ async function createAgendamentoByEmail(req, res) {
       return res.status(400).json({ error: snapshotServico.error });
     }
 
+    const barbeiroUsuarioId = await normalizarBarbeiroUsuarioId(barbeiro_id);
+
     const result = await pool.query(
       `INSERT INTO agendamentos (
          barbearia_id,
@@ -505,7 +539,7 @@ async function createAgendamentoByEmail(req, res) {
         snapshotServico.servicoNomeSnapshot,
         snapshotServico.servicoPrecoSnapshot,
         cliente.id,
-        barbeiro_id || null,
+        barbeiroUsuarioId,
         data,
         hora,
         observacoes || null,
@@ -518,11 +552,11 @@ async function createAgendamentoByEmail(req, res) {
       servico_id: snapshotServico.servicoId,
       servico_nome: snapshotServico.servicoNomeSnapshot,
       cliente_id: cliente.id,
-      barbeiro_id,
+      barbeiro_id: barbeiroUsuarioId,
       data,
       hora,
     });
-    const whatsappAutomation = await enviarConfirmacaoAutomaticaAgendamento(barbearia_id, whatsapp);
+    const whatsappAutomation = await enviarConfirmacaoAutomaticaAgendamentoSeguro(barbearia_id, whatsapp);
 
     res.status(201).json({
       agendamento: result.rows[0],
