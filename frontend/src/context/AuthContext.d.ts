@@ -13,6 +13,8 @@ declare module '@/context/AuthContext' {
     telefone: string
     senha: string
     tipo: string
+    termsAccepted: boolean
+    privacyAccepted: boolean
   }
 
   export type AuthContextValue = {

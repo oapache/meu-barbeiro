@@ -1,5 +1,6 @@
 const express = require('express');
 const config = require('../config');
+const { authorizeServiceToken } = require('../services/serviceTokenAuth');
 const { sendTextMessage, disconnectBotPorAssinatura } = require('../services/whatsappBot');
 const { registrarSolicitacaoAvaliacaoPendente } = require('../services/chatbotConversation');
 const {
@@ -12,15 +13,14 @@ const {
 const router = express.Router();
 
 function requireServiceToken(req, res, next) {
-  if (!config.botServiceToken) {
-    return next();
-  }
+  const authResult = authorizeServiceToken({
+    configuredToken: config.botServiceToken,
+    authorizationHeader: req.headers?.authorization,
+    missingTokenMessage: 'BOT_SERVICE_TOKEN não configurado no serviço do bot.',
+  });
 
-  const authHeader = String(req.headers?.authorization || '').trim();
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
-
-  if (token !== config.botServiceToken) {
-    return res.status(401).json({ error: 'Token interno do bot inválido.' });
+  if (!authResult.ok) {
+    return res.status(authResult.status).json({ error: authResult.error });
   }
 
   next();

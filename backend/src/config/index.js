@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const { validateRuntimeSecurity } = require('./runtimeSecurity');
+
 function parseList(value, fallback = []) {
   const items = String(value || '')
     .split(',')
@@ -12,7 +14,7 @@ function parseList(value, fallback = []) {
 const appUrl = process.env.APP_URL || 'https://ocortecerto.com';
 const apiUrl = process.env.API_PUBLIC_URL || 'https://api.ocortecerto.com';
 
-module.exports = {
+const config = {
   port: process.env.PORT || 3001,
   nodeEnv: process.env.NODE_ENV || 'development',
   appUrl,
@@ -36,7 +38,7 @@ module.exports = {
   
   // JWT
   jwt: {
-    secret: process.env.JWT_SECRET || 'meubarbeiro-secret-key',
+    secret: String(process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-jwt-secret' : '')).trim(),
     expiresIn: '7d'
   },
 
@@ -60,6 +62,14 @@ module.exports = {
 
   bot: {
     serviceUrl: process.env.BOT_SERVICE_URL || '',
-    serviceToken: process.env.BOT_SERVICE_TOKEN || '',
+    serviceToken: String(process.env.BOT_SERVICE_TOKEN || '').trim(),
   }
 };
+
+validateRuntimeSecurity({
+  serviceName: 'backend',
+  nodeEnv: config.nodeEnv,
+  jwtSecret: config.jwt.secret,
+});
+
+module.exports = config;

@@ -20,6 +20,8 @@ function CadastroPageContent() {
   const [telefone, setTelefone] = useState('')
   const [senha, setSenha] = useState('')
   const [tipo, setTipo] = useState<'cliente' | 'barbeiro'>(tipoInicial)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -35,11 +37,17 @@ function CadastroPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setError('')
 
+    if (!termsAccepted || !privacyAccepted) {
+      setError('Para criar sua conta, aceite os Termos de Uso e a Política de Privacidade.')
+      return
+    }
+
+    setLoading(true)
+
     try {
-      const result = await register({ nome, email, telefone, senha, tipo })
+      const result = await register({ nome, email, telefone, senha, tipo, termsAccepted, privacyAccepted })
       const fallbackRoute = getRedirectByUserType(result.usuario)
       const requestedProfessionalRoute = redirect.startsWith('/barbearia')
       const canAccessRequestedRoute = !requestedProfessionalRoute || result.usuario?.tipo === 'barbeiro'
@@ -199,9 +207,45 @@ function CadastroPageContent() {
               </div>
             </div>
 
+            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/35 p-4 text-sm leading-6 text-zinc-300">
+              <label className="flex gap-3">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-black text-emerald-400 accent-emerald-400"
+                  required
+                />
+                <span>
+                  Li e aceito os{' '}
+                  <Link href="/termos-de-uso" className="font-medium text-white underline decoration-white/30 underline-offset-4 hover:decoration-white">
+                    Termos de Uso
+                  </Link>
+                  .
+                </span>
+              </label>
+
+              <label className="flex gap-3">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-black text-emerald-400 accent-emerald-400"
+                  required
+                />
+                <span>
+                  Li e estou ciente da{' '}
+                  <Link href="/politica-de-privacidade" className="font-medium text-white underline decoration-white/30 underline-offset-4 hover:decoration-white">
+                    Política de Privacidade
+                  </Link>{' '}
+                  e do tratamento dos meus dados.
+                </span>
+              </label>
+            </div>
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !termsAccepted || !privacyAccepted}
               className="inline-flex w-full items-center justify-center gap-2 rounded-[22px] bg-white px-5 py-4 text-base font-semibold text-black transition-all duration-200 hover:bg-zinc-200 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading
