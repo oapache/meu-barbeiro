@@ -9,24 +9,30 @@
     "start:worker": "node src/worker.js",
     "start:scheduler": "node src/scheduler.js",
     "dev": "nodemon src/index.js",
-    "db:test": "node scripts/test-mysql.js"
+    "db:test": "node scripts/test-mysql.js",
+    "test": "node --test tests/runtime-security.test.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.18",
     "bullmq": "^5.64.1",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
-    "express": "^4.18.2",
+    "express": "^4.21.2",
     "helmet": "^7.1.0",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "mysql2": "^3.22.3",
     "pino": "^9.14.0",
-    "qrcode": "^1.5.4",
-    "pm2": "^6.0.13"
+    "qrcode": "^1.5.4"
+  },
+  "overrides": {
+    "body-parser": "1.20.4",
+    "path-to-regexp": "0.1.13",
+    "qs": "6.15.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "pm2": "^7.0.1"
   }
 }

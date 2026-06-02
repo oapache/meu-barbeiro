@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const { validateRuntimeSecurity } = require('./runtimeSecurity');
+
 function parseList(value, fallback = []) {
   const items = String(value || '')
     .split(',')
@@ -28,7 +30,7 @@ const appUrl = process.env.APP_URL || 'https://ocortecerto.com';
 const backendApiUrl = String(process.env.BACKEND_API_URL || process.env.API_PUBLIC_URL || 'https://api.ocortecerto.com/api').replace(/\/+$/, '');
 const configuredCorsOrigins = parseList(process.env.CORS_ORIGIN);
 
-module.exports = {
+const config = {
   port: process.env.BOT_PORT || process.env.PORT || 3010,
   nodeEnv: process.env.NODE_ENV || 'production',
   appUrl,
@@ -42,10 +44,10 @@ module.exports = {
     ]),
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'meubarbeiro-secret-key',
+    secret: String(process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test-jwt-secret' : '')).trim(),
     expiresIn: '7d',
   },
-  botServiceToken: process.env.BOT_SERVICE_TOKEN || '',
+  botServiceToken: String(process.env.BOT_SERVICE_TOKEN || '').trim(),
   backendSync: {
     apiUrl: backendApiUrl,
     enabled: process.env.BOT_BACKEND_SYNC_ENABLED !== 'false',
@@ -78,3 +80,13 @@ module.exports = {
     maxReconnectAttempts: Number(process.env.BOT_MAX_RECONNECT_ATTEMPTS || 3),
   },
 };
+
+validateRuntimeSecurity({
+  serviceName: 'bot',
+  nodeEnv: config.nodeEnv,
+  jwtSecret: config.jwt.secret,
+  serviceToken: config.botServiceToken,
+  requireServiceToken: true,
+});
+
+module.exports = config;

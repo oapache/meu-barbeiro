@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import ApiService from '@/services/api'
@@ -213,7 +213,8 @@ function ShopLogoFallback({ className }: { className: string }) {
   )
 }
 
-export default function BarberShopDetailPage({ params }: { params: { id: string } }) {
+export default function BarberShopDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params)
   const { isAuthenticated } = useAuth()
   const [activeTab, setActiveTab] = useState<TabKey>('services')
   const [shop, setShop] = useState(defaultShop)
@@ -248,7 +249,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
         setLoading(true)
         setLoadError(null)
 
-        const detalhe = await ApiService.getBarbearia(params.id)
+        const detalhe = await ApiService.getBarbearia(resolvedParams.id)
         const barbearia = detalhe?.barbearia
 
         if (barbearia) {
@@ -258,7 +259,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
 
           setShop((prev) => ({
             ...prev,
-            id: String(barbearia.id || params.id),
+            id: String(barbearia.id || resolvedParams.id),
             name: barbearia.nome || prev.name,
             address: barbearia.endereco || prev.address,
             district,
@@ -278,7 +279,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
         }
 
         try {
-          const respostaDetalhes = await ApiService.getBarbeariaDetalhes(params.id)
+          const respostaDetalhes = await ApiService.getBarbeariaDetalhes(resolvedParams.id)
           const detalhes = respostaDetalhes?.detalhes || {}
 
           const amenidades = Array.isArray(detalhes?.amenidades)
@@ -333,7 +334,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
         }
 
         try {
-          const respostaServicos = await ApiService.listServicos(params.id)
+          const respostaServicos = await ApiService.listServicos(resolvedParams.id)
           const listaServicos = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
 
           setShop((prev) => ({
@@ -358,7 +359,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
     }
 
     carregarBarbearia()
-  }, [params.id])
+  }, [resolvedParams.id])
 
   const whatsappLink = useMemo(() => {
     const message = encodeURIComponent(`Olá! Quero agendar um horário na ${shop.name}.`)
@@ -514,7 +515,7 @@ export default function BarberShopDetailPage({ params }: { params: { id: string 
                     <div className="text-right shrink-0">
                       <p className="text-base sm:text-lg font-semibold text-white">{formatPrice(service.price)}</p>
                       <Link
-                        href={`/barberia/${params.id}/agendar?servicoId=${service.id}`}
+                        href={`/barberia/${resolvedParams.id}/agendar?servicoId=${service.id}`}
                         className="inline-flex items-center justify-center rounded-lg border border-white/25 px-2.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-medium text-white hover:bg-white hover:text-black transition mt-1"
                       >
                         Agendar

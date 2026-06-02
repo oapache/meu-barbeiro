@@ -13,9 +13,10 @@ cp .env.example .env
 npm run start:api
 ```
 
-Para produção com PM2:
+Para produção com PM2 global:
 
 ```bash
+npm install -g pm2
 pm2 start ecosystem.config.js
 pm2 save
 ```

@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS usuarios (
   telefone VARCHAR(20),
   tipo VARCHAR(20) DEFAULT 'cliente', -- 'cliente' ou 'barbeiro'
   avatar_url TEXT,
+  terms_accepted_at TIMESTAMP WITH TIME ZONE,
+  terms_version VARCHAR(50),
+  privacy_accepted_at TIMESTAMP WITH TIME ZONE,
+  privacy_version VARCHAR(50),
+  legal_acceptance_ip VARCHAR(100),
+  legal_acceptance_user_agent TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

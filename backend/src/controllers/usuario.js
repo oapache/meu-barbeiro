@@ -3,6 +3,10 @@ const bcrypt = require('bcryptjs');
 const { ensureUserProfileSchema } = require('../services/userProfileSchema');
 const { signAuthToken } = require('../services/authTokens');
 const { safeSyncUserToBot } = require('../services/botSync');
+const {
+  validarAceiteLegalCadastro,
+  montarRegistroAceiteLegal,
+} = require('../services/legalConsent');
 
 function normalizarTexto(value) {
   return String(value || '').trim();
@@ -30,6 +34,11 @@ function normalizarMediaUrl(value) {
   return isPersistableMediaUrl(url) ? url : null;
 }
 
+function obterIpRequisicao(req) {
+  const forwardedFor = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwardedFor || req.ip || req.socket?.remoteAddress || null;
+}
+
 function serializarUsuario(row) {
   if (!row) return row;
   return {
@@ -48,7 +57,17 @@ async function register(req, res) {
   try {
     await ensureUserProfileSchema();
 
-    const { nome, email, senha, telefone, tipo, tax_id, billing_address } = req.body;
+    const {
+      nome,
+      email,
+      senha,
+      telefone,
+      tipo,
+      tax_id,
+      billing_address,
+      termsAccepted,
+      privacyAccepted,
+    } = req.body;
     console.debug('[USUARIO.register] Entrada', {
       nomeLength: nome?.length || 0,
       email,
@@ -60,6 +79,12 @@ async function register(req, res) {
     if (!nome || !email || !senha) {
       console.info('[USUARIO.register] Validação falhou: campos obrigatórios ausentes');
       return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
+    }
+
+    const validacaoAceiteLegal = validarAceiteLegalCadastro({ termsAccepted, privacyAccepted });
+    if (!validacaoAceiteLegal.ok) {
+      console.info('[USUARIO.register] Validação falhou: aceite legal ausente', { email });
+      return res.status(validacaoAceiteLegal.status).json({ error: validacaoAceiteLegal.error });
     }
     
     // Verificar se email já existe
@@ -73,17 +98,40 @@ async function register(req, res) {
     // Criptografar senha
     console.debug('[USUARIO.register] Gerando hash da senha');
     const senhaHash = await bcrypt.hash(senha, 10);
+    const aceiteLegal = montarRegistroAceiteLegal({
+      ipAddress: obterIpRequisicao(req),
+      userAgent: req.headers?.['user-agent'],
+    });
     
     console.debug('[USUARIO.register] Inserindo novo usuário');
     const result = await pool.query(
-      `INSERT INTO usuarios (nome, email, senha_hash, telefone, tipo, tax_id, billing_address)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO usuarios (
+         nome, email, senha_hash, telefone, tipo, tax_id, billing_address,
+         terms_accepted_at, terms_version, privacy_accepted_at, privacy_version,
+         legal_acceptance_ip, legal_acceptance_user_agent
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id, nome, email, telefone, tipo, avatar_url, preferencias,
                  tax_id, billing_address,
+                 terms_accepted_at, terms_version, privacy_accepted_at, privacy_version,
                  subscription_plan, subscription_status,
                  subscription_trial_ends_at, subscription_grace_ends_at, subscription_current_period_end,
                  created_at`,
-      [nome, email, senhaHash, telefone || null, tipo || 'cliente', normalizarTexto(tax_id) || null, billing_address || {}]
+      [
+        nome,
+        email,
+        senhaHash,
+        telefone || null,
+        tipo || 'cliente',
+        normalizarTexto(tax_id) || null,
+        billing_address || {},
+        new Date(aceiteLegal.terms_accepted_at),
+        aceiteLegal.terms_version,
+        new Date(aceiteLegal.privacy_accepted_at),
+        aceiteLegal.privacy_version,
+        aceiteLegal.legal_acceptance_ip,
+        aceiteLegal.legal_acceptance_user_agent,
+      ]
     );
 
     console.info('[USUARIO.register] Usuário criado com sucesso', {

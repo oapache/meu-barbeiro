@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
@@ -153,7 +153,8 @@ const obterFaixaDoDia = (
   }
 }
 
-export default function AgendamentoPage({ params }: { params: { id: string } }) {
+export default function AgendamentoPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, isAuthenticated, loading: authLoading } = useAuth() as AuthState
@@ -174,7 +175,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
   const [datasPorPagina, setDatasPorPagina] = useState(8)
 
   const [barbearia, setBarbearia] = useState({
-    id: params.id,
+    id: resolvedParams.id,
     nome: 'Barbearia',
     servicos: [] as Servico[],
     horarios: HORARIOS_PADRAO,
@@ -183,8 +184,8 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
   const servicoIdPreSelecionado = searchParams.get('servicoId')
   const redirectPath = useMemo(() => {
     const query = searchParams.toString()
-    return query ? `/barberia/${params.id}/agendar?${query}` : `/barberia/${params.id}/agendar`
-  }, [params.id, searchParams])
+    return query ? `/barberia/${resolvedParams.id}/agendar?${query}` : `/barberia/${resolvedParams.id}/agendar`
+  }, [resolvedParams.id, searchParams])
 
   useEffect(() => {
     const carregarDados = async () => {
@@ -193,7 +194,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
 
         let nomeBarbearia = 'Barbearia'
         try {
-          const detalhe = await ApiService.getBarbearia(params.id)
+          const detalhe = await ApiService.getBarbearia(resolvedParams.id)
           const barbeariaApi = detalhe?.barbearia
           nomeBarbearia = barbeariaApi?.nome || nomeBarbearia
 
@@ -209,7 +210,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
 
         let servicosCarregados: Servico[] = []
         try {
-          const respostaServicos = await ApiService.listServicos(params.id)
+          const respostaServicos = await ApiService.listServicos(resolvedParams.id)
           const lista = Array.isArray(respostaServicos?.servicos) ? respostaServicos.servicos : []
           servicosCarregados = lista.map((servico: any) => ({
             id: String(servico.id),
@@ -223,7 +224,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
 
         let equipeCarregada: BarbeiroOption[] = []
         try {
-          const respostaDetalhes = await ApiService.getBarbeariaDetalhes(params.id)
+          const respostaDetalhes = await ApiService.getBarbeariaDetalhes(resolvedParams.id)
           const profissionais = Array.isArray(respostaDetalhes?.detalhes?.profissionais)
             ? respostaDetalhes.detalhes.profissionais
             : []
@@ -242,7 +243,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
 
         setBarbearia((prev) => ({
           ...prev,
-          id: params.id,
+          id: resolvedParams.id,
           nome: nomeBarbearia,
           servicos: servicosCarregados,
         }))
@@ -260,7 +261,7 @@ export default function AgendamentoPage({ params }: { params: { id: string } }) 
     }
 
     carregarDados()
-  }, [params.id, servicoIdPreSelecionado])
+  }, [resolvedParams.id, servicoIdPreSelecionado])
 
   const barbeiroSelecionado = barbeiros.find((item) => item.id === barbeiroSelecionadoId) || null
   const barbeiroEfetivo = barbeiroSelecionado || (barbeiros.length === 1 ? barbeiros[0] : null)

@@ -3,20 +3,20 @@ const config = require('../config');
 const { getBarbeariaSyncPayload } = require('../services/botSync');
 const { ensureAgendamentoSchema } = require('../services/agendamentoSchema');
 const { ensureServicoAvailabilitySchema } = require('../services/servicoAvailability');
+const { authorizeServiceToken } = require('../services/serviceTokenAuth');
 const pool = require('../config/database');
 
 const router = express.Router();
 
 function requireServiceToken(req, res, next) {
-  if (!config.bot?.serviceToken) {
-    return res.status(503).json({ error: 'BOT_SERVICE_TOKEN não configurado na API principal.' });
-  }
+  const authResult = authorizeServiceToken({
+    configuredToken: config.bot?.serviceToken,
+    authorizationHeader: req.headers?.authorization,
+    missingTokenMessage: 'BOT_SERVICE_TOKEN não configurado na API principal.',
+  });
 
-  const authHeader = String(req.headers?.authorization || '').trim();
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
-
-  if (token !== config.bot.serviceToken) {
-    return res.status(401).json({ error: 'Token interno do bot inválido.' });
+  if (!authResult.ok) {
+    return res.status(authResult.status).json({ error: authResult.error });
   }
 
   next();
